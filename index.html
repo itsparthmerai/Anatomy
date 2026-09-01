@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kinesis — Interactive Skeleton</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">＋</span>
+        <span class="brand-name">Kinesis</span>
+      </div>
+
+      <div class="view-switch" role="tablist" aria-label="View">
+        <button class="view-btn active" data-view="anterior" role="tab" aria-selected="true">Anterior</button>
+        <button class="view-btn" data-view="posterior" role="tab" aria-selected="false">Posterior</button>
+      </div>
+
+      <div class="topbar-actions">
+        <label class="toggle">
+          <input type="checkbox" id="angleToggle" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-label">Joint angles</span>
+        </label>
+        <button class="ghost-btn" id="resetBtn">Reset pose</button>
+      </div>
+    </header>
+
+    <main class="stage">
+      <div class="canvas-wrap">
+        <svg id="skeletonSvg" viewBox="0 0 480 640" preserveAspectRatio="xMidYMid meet" aria-label="Interactive skeleton diagram">
+          <g id="shapesGroup"></g>
+          <g id="bonesGroup"></g>
+          <g id="marksGroup"></g>
+          <g id="jointsGroup"></g>
+          <g id="labelsGroup"></g>
+        </svg>
+
+        <div class="view-tag" id="viewTag">Anterior view</div>
+      </div>
+
+      <aside class="panel" id="infoPanel">
+        <div class="panel-empty" id="panelEmpty">
+          <h2>No joint selected</h2>
+          <p>Drag any handle to pose the skeleton. Click a joint to isolate it — everything else fades so you can focus on a single motion.</p>
+          <ul class="hints">
+            <li><span>Drag</span> a joint to rotate the bone around it</li>
+            <li><span>Click</span> a joint to isolate &amp; inspect it</li>
+            <li><span>Click</span> empty space to clear selection</li>
+          </ul>
+        </div>
+
+        <div class="panel-selected" id="panelSelected" hidden>
+          <span class="panel-kicker">Isolated joint</span>
+          <h2 id="selJointName">—</h2>
+          <div class="angle-readout">
+            <span class="angle-value" id="selJointAngle">—</span>
+            <span class="angle-unit">degrees</span>
+          </div>
+          <p class="angle-caption" id="selJointCaption">Angle between the two adjoining bones. 180° is fully extended.</p>
+          <button class="ghost-btn wide" id="clearSelectionBtn">Clear selection</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="footbar">
+      <span>Drag handles to pose &middot; posterior view mirrors the figure, matching real anatomical convention</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
