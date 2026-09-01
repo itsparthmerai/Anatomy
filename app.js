@@ -136,15 +136,6 @@
     return false;
   }
 
-  function boneIsRelated(childId) {
-    // the bone drawn FROM parent TO childId; related if either endpoint matches selection rule
-    if (!state.selected) return true;
-    if (childId === state.selected) return true;
-    const sel = state.joints[state.selected];
-    if (sel.angleChild === childId) return true;
-    return false;
-  }
-
   // ---------------------------------------------------------------
   // Rendering
   // ---------------------------------------------------------------
@@ -159,9 +150,7 @@
     clear(gJoints);
     clear(gLabels);
 
-    drawBodyShapes(screenPos);
-    drawBones(screenPos);
-    drawAnatomicalMarks(screenPos);
+    drawSkeletonBody(screenPos);
     drawJoints(screenPos, pos);
 
     document.getElementById("viewTag").textContent =
@@ -170,97 +159,267 @@
     renderSidePanel(pos);
   }
 
-  function drawBodyShapes(screenPos) {
+  // -- isolation helpers for shape rendering -----------------------
+  function relatedIds() {
+    if (!state.selected) return null;
+    const sel = state.joints[state.selected];
+    return new Set([state.selected, sel.parent, sel.angleChild].filter(Boolean));
+  }
+
+  function shapeClass(base, ids) {
+    const rs = relatedIds();
+    if (!rs) return base;
+    const hit = ids.some((id) => rs.has(id));
+    return `${base} ${hit ? "related" : "dimmed"}`;
+  }
+
+  function screenAngle(a, b) {
+    return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+  }
+
+  // -- long-bone silhouette (shaft with flared, rounded ends) ------
+  function longBonePath(L, hs, he, flare) {
+    const f = Math.max(4, Math.min(flare, L / 2 - 2));
+    return [
+      `M 0 ${-he}`,
+      `C ${he * 0.6} ${-he} ${f * 0.5} ${-hs} ${f} ${-hs}`,
+      `L ${L - f} ${-hs}`,
+      `C ${L - f * 0.5} ${-hs} ${L - he * 0.6} ${-he} ${L} ${-he}`,
+      `C ${L + he * 0.9} ${-he * 0.3} ${L + he * 0.9} ${he * 0.3} ${L} ${he}`,
+      `C ${L - he * 0.6} ${he} ${L - f * 0.5} ${hs} ${L - f} ${hs}`,
+      `L ${f} ${hs}`,
+      `C ${f * 0.5} ${hs} ${he * 0.6} ${he} 0 ${he}`,
+      `C ${-he * 0.9} ${he * 0.3} ${-he * 0.9} ${-he * 0.3} 0 ${-he}`,
+      "Z",
+    ].join(" ");
+  }
+
+  function drawLongBone(group, a, b, hs, he, flare, offset, cls) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const L = Math.hypot(dx, dy) || 1;
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const nx = -dy / L, ny = dx / L;
+    const ox = a.x + nx * offset, oy = a.y + ny * offset;
+    group.appendChild(
+      el("path", {
+        d: longBonePath(L, hs, he, flare),
+        class: cls,
+        transform: `translate(${ox} ${oy}) rotate(${angleDeg})`,
+      })
+    );
+  }
+
+  // -- pelvis: iliac wings flaring from a narrower hip/pubic waist --
+  function drawPelvis(group, screenPos) {
+    const pel = screenPos.pelvis, hl = screenPos.hipL, hr = screenPos.hipR;
+    const cls = shapeClass("bone-shape", ["pelvis"]);
+    const topY = pel.y - 22, waistY = pel.y + 2, botY = pel.y + 24;
+    const d = `
+      M ${pel.x} ${topY - 10}
+      C ${hl.x + 6} ${topY - 14} ${hl.x - 10} ${topY - 2} ${hl.x - 8} ${topY + 8}
+      C ${hl.x - 6} ${topY + 18} ${hl.x + 4} ${waistY - 4} ${hl.x + 10} ${waistY + 6}
+      C ${pel.x - 16} ${botY - 8} ${pel.x - 10} ${botY + 12} ${pel.x} ${botY + 6}
+      C ${pel.x + 10} ${botY + 12} ${pel.x + 16} ${botY - 8} ${hr.x - 10} ${waistY + 6}
+      C ${hr.x - 4} ${waistY - 4} ${hr.x + 6} ${topY + 18} ${hr.x + 8} ${topY + 8}
+      C ${hr.x + 10} ${topY - 2} ${hr.x - 6} ${topY - 14} ${pel.x} ${topY - 10}
+      Z`;
+    group.appendChild(el("path", { d, class: cls }));
+  }
+
+  // -- vertebral column: a stack of small bodies along a segment ----
+  function drawVertebrae(group, from, to, count, wStart, wEnd, cls) {
+    const ang = screenAngle(from, to) + 90;
+    for (let i = 0; i < count; i++) {
+      const t = (i + 0.5) / count;
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t;
+      const w = wStart + (wEnd - wStart) * t;
+      group.appendChild(
+        el("rect", {
+          x: -w / 2, y: -4, width: w, height: 8, rx: 2.5,
+          class: cls,
+          transform: `translate(${x} ${y}) rotate(${ang})`,
+        })
+      );
+    }
+  }
+
+  // -- ribcage, sternum/scapulae, spine column ----------------------
+  function drawTorso(gShapes, gMarks, screenPos, anterior) {
     const chest = screenPos.chest, pelvis = screenPos.pelvis;
-    const chestAngle = state.joints.chest.angle;
+    const rot = screenAngle(pelvis, chest) + 90;
+    const len = Math.hypot(chest.x - pelvis.x, chest.y - pelvis.y);
     const midX = (chest.x + pelvis.x) / 2;
-    const midY = (chest.y + pelvis.y) / 2;
-    const dimmed = state.selected && !["chest", "pelvis"].includes(state.selected) ? "dimmed" : "";
-    const rotate = `rotate(${chestAngle + 90} ${midX} ${midY})`;
+    const midY = (chest.y + pelvis.y) / 2 - len * 0.08;
+    const cls = shapeClass("bone-shape", ["chest", "pelvis"]);
+    const markCls = shapeClass("detail-mark", ["chest", "pelvis"]);
 
     const rib = el("ellipse", {
-      cx: midX, cy: midY, rx: 54, ry: 58,
-      class: `body-shape ${dimmed}`.trim(),
-      transform: rotate,
+      cx: midX, cy: midY, rx: 50, ry: 56,
+      class: cls, transform: `rotate(${rot} ${midX} ${midY})`,
     });
     gShapes.appendChild(rib);
 
-    const pelvisShape = el("rect", {
-      x: pelvis.x - 40, y: pelvis.y - 14, width: 80, height: 28, rx: 12,
-      class: `body-shape ${dimmed}`.trim(),
-    });
-    gShapes.appendChild(pelvisShape);
-
-    if (state.joints.head.skull) {
-      const headPos = screenPos.head, neckPos = screenPos.neck;
-      const cx = neckPos.x + (headPos.x - neckPos.x) * 0.55;
-      const cy = neckPos.y + (headPos.y - neckPos.y) * 0.55;
-      const skullDimmed = state.selected && !["head", "neck"].includes(state.selected) ? "dimmed" : "";
-      const skull = el("circle", { cx, cy, r: 27, class: `body-shape ${skullDimmed}`.trim() });
-      gShapes.appendChild(skull);
+    for (let i = 0; i < 5; i++) {
+      const dy = -34 + i * 16;
+      const rx = 42 - Math.abs(dy) * 0.15;
+      gMarks.appendChild(
+        el("path", {
+          d: `M ${midX - rx} ${midY + dy} A ${rx} 11 0 0 0 ${midX + rx} ${midY + dy}`,
+          class: markCls,
+          transform: `rotate(${rot} ${midX} ${midY})`,
+        })
+      );
     }
-  }
-
-  function drawAnatomicalMarks(screenPos) {
-    const anterior = state.view === "anterior";
-    const chest = screenPos.chest, pelvis = screenPos.pelvis;
-    const chestAngle = state.joints.chest.angle;
-    const midX = (chest.x + pelvis.x) / 2;
-    const midY = (chest.y + pelvis.y) / 2;
-    const rotate = `rotate(${chestAngle + 90} ${midX} ${midY})`;
-    const torsoDimmed = state.selected && !["chest", "pelvis"].includes(state.selected) ? "dimmed" : "";
 
     if (anterior) {
-      // sternum line
-      const sternum = el("line", {
-        x1: midX, y1: midY - 34, x2: midX, y2: midY + 22,
-        class: `detail-mark ${torsoDimmed}`.trim(),
-        transform: rotate,
-      });
-      gMarks.appendChild(sternum);
-
-      // patellae
-      for (const kneeId of ["kneeL", "kneeR"]) {
-        const p = screenPos[kneeId];
-        const dimmed = isRelated(kneeId) ? "" : "dimmed";
-        gMarks.appendChild(el("circle", { cx: p.x, cy: p.y, r: 6, class: `detail-mark ${dimmed}`.trim() }));
-      }
+      gMarks.appendChild(
+        el("line", {
+          x1: midX, y1: midY - 30, x2: midX, y2: midY + 20,
+          class: markCls, transform: `rotate(${rot} ${midX} ${midY})`,
+        })
+      );
     } else {
-      // vertebrae dots along the spine
-      for (let t = 0.12; t <= 0.92; t += 0.16) {
-        const x = pelvis.x + (chest.x - pelvis.x) * t;
-        const y = pelvis.y + (chest.y - pelvis.y) * t;
-        gMarks.appendChild(el("circle", { cx: x, cy: y, r: 2.2, class: `detail-mark ${torsoDimmed}`.trim() }));
-      }
-      // scapulae
       for (const side of [-1, 1]) {
-        const bx = midX + side * 20;
-        const by = midY - 24;
-        const tri = el("path", {
-          d: `M ${bx} ${by} L ${bx + side * 16} ${by + 10} L ${bx} ${by + 30} Z`,
-          class: `detail-mark ${torsoDimmed}`.trim(),
-        });
-        gMarks.appendChild(tri);
+        const bx = midX + side * 18, by = midY - 20;
+        gMarks.appendChild(
+          el("path", {
+            d: `M ${bx} ${by} L ${bx + side * 18} ${by + 14} L ${bx + side * 4} ${by + 34} Z`,
+            class: markCls,
+            transform: `rotate(${rot} ${midX} ${midY})`,
+          })
+        );
       }
+    }
+
+    drawVertebrae(gShapes, pelvis, chest, 5, 15, 12, cls);
+    drawVertebrae(gShapes, chest, screenPos.neck, 3, 10, 8, shapeClass("bone-shape", ["chest", "neck"]));
+  }
+
+  // -- skull: cranium always, jaw/eyes (anterior) or suture (posterior) --
+  function drawSkull(gShapes, gMarks, screenPos, anterior) {
+    const head = screenPos.head, neck = screenPos.neck;
+    const rot = screenAngle(neck, head) + 90;
+    const cx = neck.x + (head.x - neck.x) * 0.55;
+    const cy = neck.y + (head.y - neck.y) * 0.55;
+    const cls = shapeClass("bone-shape", ["head", "neck"]);
+    const markCls = shapeClass("detail-mark", ["head", "neck"]);
+    const transform = `translate(${cx} ${cy}) rotate(${rot})`;
+
+    gShapes.appendChild(
+      el("path", {
+        d: "M -22 4 C -24 -14 -12 -25 0 -25 C 12 -25 24 -14 22 4 C 21 10 15 13 8 14 L -8 14 C -15 13 -21 10 -22 4 Z",
+        class: cls, transform,
+      })
+    );
+
+    if (anterior) {
+      gShapes.appendChild(
+        el("path", { d: "M -8 14 C -9 22 -5 29 0 30 C 5 29 9 22 8 14 Z", class: cls, transform })
+      );
+      gMarks.appendChild(el("circle", { cx: -8, cy: 0, r: 3, class: markCls, transform }));
+      gMarks.appendChild(el("circle", { cx: 8, cy: 0, r: 3, class: markCls, transform }));
+      gMarks.appendChild(el("path", { d: "M -2 6 L 2 6 L 0 11 Z", class: markCls, transform }));
+    } else {
+      gMarks.appendChild(el("line", { x1: 0, y1: -24, x2: 0, y2: 12, class: markCls, transform }));
+      gMarks.appendChild(el("circle", { cx: 0, cy: 13, r: 1.6, class: markCls, transform }));
     }
   }
 
-  function drawBones(screenPos) {
-    for (const id of JOINT_ORDER) {
-      const j = state.joints[id];
-      if (j.parent === null) continue;
-      const a = screenPos[j.parent];
-      const b = screenPos[id];
-      const related = boneIsRelated(id);
-      const cls = ["bone-line"];
-      if (!related) cls.push("dimmed");
-      else if (state.selected) cls.push("related");
-      const line = el("line", {
-        x1: a.x, y1: a.y, x2: b.x, y2: b.y,
-        "stroke-width": j.thickness || 8,
-        class: cls.join(" "),
-      });
-      gBones.appendChild(line);
+  function drawClavicle(group, chest, shoulder, side, cls) {
+    const dx = shoulder.x - chest.x, dy = shoulder.y - chest.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = -dy / len, uy = dx / len;
+    const bow = 7 * side;
+    const c1x = chest.x + dx * 0.3 + ux * bow, c1y = chest.y + dy * 0.3 + uy * bow;
+    const c2x = chest.x + dx * 0.7 - ux * bow, c2y = chest.y + dy * 0.7 - uy * bow;
+    group.appendChild(
+      el("path", {
+        d: `M ${chest.x} ${chest.y} C ${c1x} ${c1y} ${c2x} ${c2y} ${shoulder.x} ${shoulder.y}`,
+        class: cls,
+      })
+    );
+  }
+
+  function drawHand(group, wrist, hand, cls) {
+    const dx = hand.x - wrist.x, dy = hand.y - wrist.y;
+    const L = Math.hypot(dx, dy) || 1;
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const g = el("g", { transform: `translate(${wrist.x} ${wrist.y}) rotate(${angleDeg})` });
+    g.appendChild(
+      el("path", {
+        d: `M 0 -6 C ${L * 0.4} -8 ${L * 0.68} -7 ${L * 0.72} -4 L ${L * 0.72} 4 C ${L * 0.68} 7 ${L * 0.4} 8 0 6 Z`,
+        class: cls,
+      })
+    );
+    for (let i = -1.5; i <= 1.5; i++) {
+      const fy = i * 3.2;
+      const flen = L * 0.32 - Math.abs(i) * L * 0.05;
+      g.appendChild(
+        el("line", {
+          x1: L * 0.72, y1: fy * 0.9, x2: L * 0.72 + flen, y2: fy,
+          class: cls, "stroke-width": 2.4, "stroke-linecap": "round",
+        })
+      );
+    }
+    group.appendChild(g);
+  }
+
+  function drawFoot(group, ankle, toe, cls) {
+    const dx = toe.x - ankle.x, dy = toe.y - ankle.y;
+    const L = Math.hypot(dx, dy) || 1;
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const g = el("g", { transform: `translate(${ankle.x} ${ankle.y}) rotate(${angleDeg})` });
+    g.appendChild(
+      el("path", {
+        d: `M -8 -6 C 4 -8 ${L * 0.7} -7 ${L * 0.88} -3 L ${L} 0 L ${L * 0.88} 3 C ${L * 0.7} 7 4 8 -8 6 C -13 3 -13 -3 -8 -6 Z`,
+        class: cls,
+      })
+    );
+    for (let i = 0; i < 4; i++) {
+      const fy = -4.2 + i * 2.8;
+      g.appendChild(
+        el("line", {
+          x1: L * 0.9, y1: fy * 0.55, x2: L * 0.98 + (i === 0 ? 4 : 2), y2: fy * 0.55,
+          class: cls, "stroke-width": 2, "stroke-linecap": "round",
+        })
+      );
+    }
+    group.appendChild(g);
+  }
+
+  function drawSkeletonBody(screenPos) {
+    const anterior = state.view === "anterior";
+
+    drawPelvis(gShapes, screenPos);
+    drawTorso(gShapes, gMarks, screenPos, anterior);
+    drawSkull(gShapes, gMarks, screenPos, anterior);
+
+    for (const side of ["L", "R"]) {
+      const chest = screenPos.chest;
+      const shoulder = screenPos["shoulder" + side];
+      const elbow = screenPos["elbow" + side];
+      const wrist = screenPos["wrist" + side];
+      const hand = screenPos["hand" + side];
+      const hip = screenPos["hip" + side];
+      const knee = screenPos["knee" + side];
+      const ankle = screenPos["ankle" + side];
+      const foot = screenPos["foot" + side];
+
+      drawClavicle(gBones, chest, shoulder, side === "L" ? -1 : 1, shapeClass("clavicle", ["shoulder" + side]));
+      drawLongBone(gBones, shoulder, elbow, 6, 10, 16, 0, shapeClass("bone-shape", ["elbow" + side]));
+      drawLongBone(gBones, elbow, wrist, 4.5, 7, 12, 3, shapeClass("bone-shape", ["wrist" + side]));
+      drawLongBone(gBones, elbow, wrist, 3.5, 6, 10, -3, shapeClass("bone-shape-thin", ["wrist" + side]));
+      drawHand(gBones, wrist, hand, shapeClass("bone-shape", ["hand" + side]));
+
+      drawLongBone(gBones, hip, knee, 8, 14, 18, 0, shapeClass("bone-shape", ["knee" + side]));
+      drawLongBone(gBones, knee, ankle, 6, 10, 14, -3, shapeClass("bone-shape", ["ankle" + side]));
+      drawLongBone(gBones, knee, ankle, 3, 5, 8, 6, shapeClass("bone-shape-thin", ["ankle" + side]));
+      drawFoot(gBones, ankle, foot, shapeClass("bone-shape", ["foot" + side]));
+
+      if (anterior) {
+        gMarks.appendChild(el("circle", { cx: knee.x, cy: knee.y, r: 6, class: shapeClass("detail-mark", ["knee" + side]) }));
+      }
     }
   }
 
@@ -278,7 +437,7 @@
       if (state.dragging === id) cls.push("dragging");
       if (!related) cls.push("dimmed");
 
-      const r = j.draggable === false ? (selected ? 8 : 5) : selected ? 13 : 9;
+      const r = j.draggable === false ? (selected ? 7 : 4) : selected ? 11 : 6.5;
 
       const circle = el("circle", {
         cx: p.x, cy: p.y, r,

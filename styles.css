@@ -7,6 +7,10 @@
   --text-dim: #8b8f98;
   --bone: #d8dbe1;
   --bone-dim: #3a3f48;
+  --bone-fill: #e9e1c8;
+  --bone-fill-thin: #d8cfae;
+  --bone-stroke: #a89a72;
+  --bone-detail: #b7ac8a;
   --anchor: #6a7080;
   --accent: #8b7cf6;
   --accent-soft: rgba(139, 124, 246, 0.16);
@@ -318,33 +322,48 @@ body {
 
 /* ---------- SVG element styling ---------- */
 
-.bone-line {
-  stroke: var(--bone);
+.bone-shape {
+  fill: var(--bone-fill);
+  stroke: var(--bone-stroke);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+  transition: opacity 0.2s ease, fill 0.15s ease, stroke 0.15s ease;
+}
+
+.bone-shape.dimmed { opacity: 0.14; }
+.bone-shape.related { fill: #f5efd9; stroke: var(--accent); }
+
+.bone-shape-thin {
+  fill: var(--bone-fill-thin);
+  stroke: var(--bone-stroke);
+  stroke-width: 0.9;
+  opacity: 0.9;
+  transition: opacity 0.2s ease, fill 0.15s ease, stroke 0.15s ease;
+}
+
+.bone-shape-thin.dimmed { opacity: 0.1; }
+.bone-shape-thin.related { fill: #ece3c2; stroke: var(--accent); opacity: 1; }
+
+.clavicle {
+  fill: none;
+  stroke: var(--bone-fill);
+  stroke-width: 6;
   stroke-linecap: round;
-  fill: none;
-  transition: stroke 0.15s ease, opacity 0.2s ease;
+  transition: opacity 0.2s ease, stroke 0.15s ease;
 }
 
-.bone-line.dimmed { opacity: 0.14; }
-.bone-line.related { stroke: var(--accent); }
-
-.body-shape {
-  fill: none;
-  stroke: var(--bone-dim);
-  stroke-width: 1.4;
-  transition: opacity 0.2s ease;
-}
-
-.body-shape.dimmed { opacity: 0.14; }
+.clavicle.dimmed { opacity: 0.14; }
+.clavicle.related { stroke: var(--accent); }
 
 .detail-mark {
   fill: none;
-  stroke: var(--anchor);
+  stroke: var(--bone-detail);
   stroke-width: 1.2;
   transition: opacity 0.2s ease;
 }
 
-.detail-mark.dimmed { opacity: 0.1; }
+.detail-mark.dimmed { opacity: 0.08; }
+.detail-mark.related { stroke: var(--accent-2); }
 
 .joint-handle {
   fill: var(--panel);
