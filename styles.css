@@ -1,17 +1,21 @@
 :root {
-  --bg: #f1efe9;
-  --panel: #ffffff;
-  --panel-2: #f6f4ef;
-  --border: #e0dcd2;
-  --text: #201f1c;
-  --text-dim: #6f6b62;
-  --ink: #1a1a1a;
-  --bone-fill: #ffffff;
-  --bone-highlight: #cdeaf4;
-  --anchor: #ffffff;
-  --accent: #7c5cf0;
-  --accent-soft: rgba(124, 92, 240, 0.12);
-  --accent-2: #14b8a6;
+  --bg: #0d0f13;
+  --panel: #14171d;
+  --panel-2: #191d24;
+  --border: #262b34;
+  --text: #e7e8ea;
+  --text-dim: #8b8f98;
+  --bone: #d8dbe1;
+  --bone-dim: #3a3f48;
+  --bone-fill: #d8c48c;
+  --bone-fill-thin: #cbb87d;
+  --bone-stroke: #7d6a42;
+  --bone-detail: #9c8a5e;
+  --cartilage: #8fa3a8;
+  --anchor: #6a7080;
+  --accent: #8b7cf6;
+  --accent-soft: rgba(139, 124, 246, 0.16);
+  --accent-2: #5ee1c5;
   --radius: 14px;
   --radius-sm: 9px;
 }
@@ -45,7 +49,6 @@ body {
   gap: 20px;
   padding: 10px 28px;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
   flex-wrap: wrap;
 }
 
@@ -97,7 +100,7 @@ body {
 
 .view-btn.active {
   background: var(--accent);
-  color: #ffffff;
+  color: #14121e;
 }
 
 .view-btn:not(.active):hover {
@@ -146,7 +149,7 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--text-dim);
+  background: var(--anchor);
   transition: transform 0.18s ease, background 0.18s ease;
 }
 
@@ -198,9 +201,6 @@ body {
   justify-content: center;
   padding: 10px;
   min-height: 480px;
-  background:
-    radial-gradient(circle at 1px 1px, rgba(0,0,0,0.035) 1px, transparent 0) 0 0/14px 14px,
-    var(--bg);
 }
 
 #skeletonSvg {
@@ -316,116 +316,112 @@ body {
 .footbar {
   padding: 8px 28px;
   border-top: 1px solid var(--border);
-  background: var(--panel);
   color: var(--text-dim);
   font-size: 12px;
   text-align: center;
 }
 
-/* ---------- SVG element styling: cartoon coloring-book bones ---------- */
+/* ---------- SVG element styling ---------- */
 
-.bone-tube {
-  fill: var(--bone-fill);
-  stroke: var(--ink);
-  stroke-width: 3.6;
+.bone-shape {
+  fill: url(#boneGrad);
+  stroke: var(--bone-stroke);
+  stroke-width: 1.3;
   stroke-linejoin: round;
   transition: opacity 0.2s ease, fill 0.15s ease, stroke 0.15s ease;
 }
 
-.bone-tube.dimmed { opacity: 0.16; }
-.bone-tube.related { stroke: var(--accent); }
+.bone-shape.dimmed { opacity: 0.14; }
+.bone-shape.related { fill: url(#boneGradHi); stroke: var(--accent); }
 
-.bone-highlight {
-  fill: var(--bone-highlight);
-  stroke: none;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
+.bone-shape-thin {
+  fill: url(#boneGradThin);
+  stroke: var(--bone-stroke);
+  stroke-width: 1;
+  opacity: 0.92;
+  transition: opacity 0.2s ease, fill 0.15s ease, stroke 0.15s ease;
 }
 
-.bone-highlight.dimmed { opacity: 0; }
-.bone-highlight.related { fill: #a9dcec; }
+.bone-shape-thin.dimmed { opacity: 0.1; }
+.bone-shape-thin.related { fill: url(#boneGradHi); stroke: var(--accent); opacity: 1; }
 
-.bone-outline {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 3.6;
-  stroke-linecap: round;
+.torso-shape {
+  fill: url(#torsoGrad);
+  stroke: var(--bone-stroke);
+  stroke-width: 1.3;
   stroke-linejoin: round;
+  transition: opacity 0.2s ease, fill 0.15s ease, stroke 0.15s ease;
+}
+
+.torso-shape.dimmed { opacity: 0.14; }
+.torso-shape.related { fill: url(#torsoGradHi); stroke: var(--accent); }
+
+.bone-seam {
+  fill: none;
+  stroke: var(--bone-stroke);
+  stroke-width: 0.8;
+  opacity: 0.45;
   transition: opacity 0.2s ease, stroke 0.15s ease;
 }
 
-.bone-outline.dimmed { opacity: 0.16; }
-.bone-outline.related { stroke: var(--accent); }
+.bone-seam.dimmed { opacity: 0.05; }
+.bone-seam.related { stroke: var(--accent); opacity: 0.6; }
 
-.ribbon-fill {
+.clavicle {
   fill: none;
   stroke: var(--bone-fill);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: opacity 0.2s ease;
-}
-
-.ribbon-fill.dimmed { opacity: 0.16; }
-
-.finger-line {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 2.6;
+  stroke-width: 7;
   stroke-linecap: round;
   transition: opacity 0.2s ease, stroke 0.15s ease;
 }
 
-.finger-line.dimmed { opacity: 0.16; }
-.finger-line.related { stroke: var(--accent); }
+.clavicle.dimmed { opacity: 0.14; }
+.clavicle.related { stroke: var(--accent); }
 
-.skull-fill {
-  fill: var(--bone-fill);
-  stroke: var(--ink);
-  stroke-width: 3.6;
-  stroke-linejoin: round;
-  transition: opacity 0.2s ease, stroke 0.15s ease;
-}
-
-.skull-fill.dimmed { opacity: 0.16; }
-.skull-fill.related { stroke: var(--accent); }
-
-.skull-feature {
-  fill: var(--ink);
-  stroke: none;
+.detail-mark {
+  fill: none;
+  stroke: var(--bone-detail);
+  stroke-width: 1.2;
   transition: opacity 0.2s ease;
 }
 
-.skull-feature.dimmed { opacity: 0.16; }
-.skull-feature.related { fill: var(--accent); }
+.detail-mark.dimmed { opacity: 0.08; }
+.detail-mark.related { stroke: var(--accent-2); }
 
-.tooth-line {
+.cartilage-mark {
   fill: none;
-  stroke: var(--ink);
-  stroke-width: 2;
-  transition: opacity 0.2s ease, stroke 0.15s ease;
+  stroke: var(--cartilage);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  opacity: 0.65;
+  transition: opacity 0.2s ease;
 }
 
-.tooth-line.dimmed { opacity: 0.16; }
-.tooth-line.related { stroke: var(--accent); }
+.cartilage-mark.dimmed { opacity: 0.06; }
+.cartilage-mark.related { stroke: var(--accent-2); opacity: 0.8; }
 
-.hole-fill {
+.ground-shadow {
+  fill: #000;
+  opacity: 0.32;
+  filter: blur(6px);
+}
+
+.bone-hole {
   fill: var(--bg);
-  stroke: var(--ink);
-  stroke-width: 2.6;
-  transition: opacity 0.2s ease, stroke 0.15s ease;
+  transition: opacity 0.2s ease;
 }
 
-.hole-fill.dimmed { opacity: 0.16; }
-.hole-fill.related { stroke: var(--accent); }
+.bone-hole.dimmed { opacity: 0.14; }
 
 .joint-handle {
-  fill: var(--bone-fill);
-  stroke: var(--ink);
-  stroke-width: 2.6;
+  fill: var(--panel);
+  stroke: var(--anchor);
+  stroke-width: 2;
   transition: opacity 0.2s ease, stroke 0.15s ease, r 0.12s ease;
 }
 
 .joint-handle.draggable {
+  stroke: var(--bone);
   cursor: grab;
 }
 
@@ -446,7 +442,7 @@ body {
 .joint-handle.dimmed { opacity: 0.18; }
 
 .joint-dot {
-  fill: var(--ink);
+  fill: var(--anchor);
   pointer-events: none;
 }
 
