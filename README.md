@@ -33,7 +33,7 @@ then visit `http://localhost:8080`.
 ## Files
 
 - `index.html` — layout and controls
-- `styles.css` — dark, minimalist visual theme
+- `styles.css` — light, cartoon "coloring book" visual theme
 - `app.js` — skeleton data model, forward kinematics, rendering, and
   pointer-based drag/select interaction (plain SVG + vanilla JS, no
   frameworks or build tools)
