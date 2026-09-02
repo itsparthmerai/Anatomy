@@ -194,25 +194,29 @@
     ].join(" ");
   }
 
-  function drawLongBone(group, a, b, hs, he, flare, offset, cls) {
+  function drawLongBone(group, a, b, hs, he, flare, offset, cls, seamCls) {
     const dx = b.x - a.x, dy = b.y - a.y;
     const L = Math.hypot(dx, dy) || 1;
     const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
     const nx = -dy / L, ny = dx / L;
     const ox = a.x + nx * offset, oy = a.y + ny * offset;
+    const transform = `translate(${ox} ${oy}) rotate(${angleDeg})`;
     group.appendChild(
-      el("path", {
-        d: longBonePath(L, hs, he, flare),
-        class: cls,
-        transform: `translate(${ox} ${oy}) rotate(${angleDeg})`,
-      })
+      el("path", { d: longBonePath(L, hs, he, flare), class: cls, transform })
     );
+    if (seamCls) {
+      const f = Math.max(4, Math.min(flare, L / 2 - 2));
+      group.appendChild(
+        el("line", { x1: f * 1.3, y1: 0, x2: L - f * 1.3, y2: 0, class: seamCls, transform })
+      );
+    }
   }
 
   // -- pelvis: iliac wings flaring from a narrower hip/pubic waist --
-  function drawPelvis(group, screenPos) {
+  function drawPelvis(group, holeGroup, screenPos) {
     const pel = screenPos.pelvis, hl = screenPos.hipL, hr = screenPos.hipR;
-    const cls = shapeClass("bone-shape", ["pelvis"]);
+    const cls = shapeClass("torso-shape", ["pelvis"]);
+    const holeCls = shapeClass("bone-hole", ["pelvis"]);
     const topY = pel.y - 22, waistY = pel.y + 2, botY = pel.y + 24;
     const d = `
       M ${pel.x} ${topY - 10}
@@ -224,23 +228,34 @@
       C ${hr.x + 10} ${topY - 2} ${hr.x - 6} ${topY - 14} ${pel.x} ${topY - 10}
       Z`;
     group.appendChild(el("path", { d, class: cls }));
+
+    // obturator foramina: the two characteristic openings in the pubic arch
+    for (const side of [-1, 1]) {
+      const ox = pel.x + side * (hl.x - pel.x) * 0.42;
+      const oy = waistY + 16;
+      holeGroup.appendChild(
+        el("ellipse", { cx: ox, cy: oy, rx: 8, ry: 12, class: holeCls })
+      );
+    }
   }
 
   // -- vertebral column: a stack of small bodies along a segment ----
-  function drawVertebrae(group, from, to, count, wStart, wEnd, cls) {
+  function drawVertebrae(group, from, to, count, wStart, wEnd, cls, spinous) {
     const ang = screenAngle(from, to) + 90;
     for (let i = 0; i < count; i++) {
       const t = (i + 0.5) / count;
       const x = from.x + (to.x - from.x) * t;
       const y = from.y + (to.y - from.y) * t;
       const w = wStart + (wEnd - wStart) * t;
+      const transform = `translate(${x} ${y}) rotate(${ang})`;
       group.appendChild(
-        el("rect", {
-          x: -w / 2, y: -4, width: w, height: 8, rx: 2.5,
-          class: cls,
-          transform: `translate(${x} ${y}) rotate(${ang})`,
-        })
+        el("rect", { x: -w / 2, y: -4, width: w, height: 8, rx: 2.5, class: cls, transform })
       );
+      if (spinous) {
+        group.appendChild(
+          el("path", { d: "M -2.5 4 L 2.5 4 L 0 9 Z", class: cls, transform })
+        );
+      }
     }
   }
 
@@ -251,8 +266,9 @@
     const len = Math.hypot(chest.x - pelvis.x, chest.y - pelvis.y);
     const midX = (chest.x + pelvis.x) / 2;
     const midY = (chest.y + pelvis.y) / 2 - len * 0.08;
-    const cls = shapeClass("bone-shape", ["chest", "pelvis"]);
+    const cls = shapeClass("torso-shape", ["chest", "pelvis"]);
     const markCls = shapeClass("detail-mark", ["chest", "pelvis"]);
+    const cartCls = shapeClass("cartilage-mark", ["chest", "pelvis"]);
 
     const rib = el("ellipse", {
       cx: midX, cy: midY, rx: 50, ry: 56,
@@ -260,23 +276,45 @@
     });
     gShapes.appendChild(rib);
 
-    for (let i = 0; i < 5; i++) {
-      const dy = -34 + i * 16;
-      const rx = 42 - Math.abs(dy) * 0.15;
+    const ribCount = 7;
+    for (let i = 0; i < ribCount; i++) {
+      const dy = -38 + i * 12.5;
+      const rx = 43 - Math.abs(dy) * 0.15;
       gMarks.appendChild(
         el("path", {
-          d: `M ${midX - rx} ${midY + dy} A ${rx} 11 0 0 0 ${midX + rx} ${midY + dy}`,
+          d: `M ${midX - rx} ${midY + dy} A ${rx} 9 0 0 0 ${midX + rx} ${midY + dy}`,
           class: markCls,
           transform: `rotate(${rot} ${midX} ${midY})`,
         })
       );
+      // costal cartilage: connects the front of each rib to the sternum (anterior only)
+      if (anterior && i > 0) {
+        gMarks.appendChild(
+          el("path", {
+            d: `M ${midX - rx * 0.55} ${midY + dy - 3} Q ${midX - 6} ${midY + dy + 4} ${midX - 5} ${midY + dy + 10}`,
+            class: cartCls,
+            transform: `rotate(${rot} ${midX} ${midY})`,
+          })
+        );
+        gMarks.appendChild(
+          el("path", {
+            d: `M ${midX + rx * 0.55} ${midY + dy - 3} Q ${midX + 6} ${midY + dy + 4} ${midX + 5} ${midY + dy + 10}`,
+            class: cartCls,
+            transform: `rotate(${rot} ${midX} ${midY})`,
+          })
+        );
+      }
     }
 
     if (anterior) {
-      gMarks.appendChild(
-        el("line", {
-          x1: midX, y1: midY - 30, x2: midX, y2: midY + 20,
-          class: markCls, transform: `rotate(${rot} ${midX} ${midY})`,
+      // sternum: manubrium (wider) tapering into the narrower body
+      gShapes.appendChild(
+        el("path", {
+          d: `M ${midX - 8} ${midY - 34} L ${midX + 8} ${midY - 34} L ${midX + 6} ${midY - 18}
+              L ${midX + 4.5} ${midY - 18} L ${midX + 4.5} ${midY + 16} L ${midX - 4.5} ${midY + 16}
+              L ${midX - 4.5} ${midY - 18} L ${midX - 6} ${midY - 18} Z`,
+          class: cls,
+          transform: `rotate(${rot} ${midX} ${midY})`,
         })
       );
     } else {
@@ -292,8 +330,8 @@
       }
     }
 
-    drawVertebrae(gShapes, pelvis, chest, 5, 15, 12, cls);
-    drawVertebrae(gShapes, chest, screenPos.neck, 3, 10, 8, shapeClass("bone-shape", ["chest", "neck"]));
+    drawVertebrae(gShapes, pelvis, chest, 5, 15, 12, cls, !anterior);
+    drawVertebrae(gShapes, chest, screenPos.neck, 3, 10, 8, shapeClass("torso-shape", ["chest", "neck"]), !anterior);
   }
 
   // -- skull: cranium always, jaw/eyes (anterior) or suture (posterior) --
@@ -302,7 +340,7 @@
     const rot = screenAngle(neck, head) + 90;
     const cx = neck.x + (head.x - neck.x) * 0.55;
     const cy = neck.y + (head.y - neck.y) * 0.55;
-    const cls = shapeClass("bone-shape", ["head", "neck"]);
+    const cls = shapeClass("torso-shape", ["head", "neck"]);
     const markCls = shapeClass("detail-mark", ["head", "neck"]);
     const transform = `translate(${cx} ${cy}) rotate(${rot})`;
 
@@ -320,6 +358,12 @@
       gMarks.appendChild(el("circle", { cx: -8, cy: 0, r: 3, class: markCls, transform }));
       gMarks.appendChild(el("circle", { cx: 8, cy: 0, r: 3, class: markCls, transform }));
       gMarks.appendChild(el("path", { d: "M -2 6 L 2 6 L 0 11 Z", class: markCls, transform }));
+      for (let i = -4; i <= 4; i++) {
+        const tx = i * 1.6;
+        gMarks.appendChild(
+          el("line", { x1: tx, y1: 25, x2: tx, y2: 28.5, class: markCls, transform })
+        );
+      }
     } else {
       gMarks.appendChild(el("line", { x1: 0, y1: -24, x2: 0, y2: 12, class: markCls, transform }));
       gMarks.appendChild(el("circle", { cx: 0, cy: 13, r: 1.6, class: markCls, transform }));
@@ -388,10 +432,19 @@
     group.appendChild(g);
   }
 
+  function drawGroundShadow(screenPos) {
+    const fl = screenPos.footL, fr = screenPos.footR;
+    const cx = (fl.x + fr.x) / 2;
+    const cy = Math.max(fl.y, fr.y) + 6;
+    const spread = Math.abs(fr.x - fl.x) + 70;
+    gShapes.appendChild(el("ellipse", { cx, cy, rx: spread / 2, ry: 10, class: "ground-shadow" }));
+  }
+
   function drawSkeletonBody(screenPos) {
     const anterior = state.view === "anterior";
 
-    drawPelvis(gShapes, screenPos);
+    drawGroundShadow(screenPos);
+    drawPelvis(gShapes, gShapes, screenPos);
     drawTorso(gShapes, gMarks, screenPos, anterior);
     drawSkull(gShapes, gMarks, screenPos, anterior);
 
@@ -407,13 +460,13 @@
       const foot = screenPos["foot" + side];
 
       drawClavicle(gBones, chest, shoulder, side === "L" ? -1 : 1, shapeClass("clavicle", ["shoulder" + side]));
-      drawLongBone(gBones, shoulder, elbow, 6, 10, 16, 0, shapeClass("bone-shape", ["elbow" + side]));
+      drawLongBone(gBones, shoulder, elbow, 6, 10, 16, 0, shapeClass("bone-shape", ["elbow" + side]), shapeClass("bone-seam", ["elbow" + side]));
       drawLongBone(gBones, elbow, wrist, 4.5, 7, 12, 3, shapeClass("bone-shape", ["wrist" + side]));
       drawLongBone(gBones, elbow, wrist, 3.5, 6, 10, -3, shapeClass("bone-shape-thin", ["wrist" + side]));
       drawHand(gBones, wrist, hand, shapeClass("bone-shape", ["hand" + side]));
 
-      drawLongBone(gBones, hip, knee, 8, 14, 18, 0, shapeClass("bone-shape", ["knee" + side]));
-      drawLongBone(gBones, knee, ankle, 6, 10, 14, -3, shapeClass("bone-shape", ["ankle" + side]));
+      drawLongBone(gBones, hip, knee, 8, 14, 18, 0, shapeClass("bone-shape", ["knee" + side]), shapeClass("bone-seam", ["knee" + side]));
+      drawLongBone(gBones, knee, ankle, 6, 10, 14, -3, shapeClass("bone-shape", ["ankle" + side]), shapeClass("bone-seam", ["ankle" + side]));
       drawLongBone(gBones, knee, ankle, 3, 5, 8, 6, shapeClass("bone-shape-thin", ["ankle" + side]));
       drawFoot(gBones, ankle, foot, shapeClass("bone-shape", ["foot" + side]));
 
