@@ -19,9 +19,9 @@ then visit `http://localhost:8080`.
 - **Drag any joint** to rotate the bone that ends there (forward-kinematics
   chain — rotating a shoulder carries the whole arm with it, rotating an
   elbow only moves the forearm/hand).
-- **Anterior / Posterior toggle** — posterior view mirrors the figure
-  horizontally, matching the real anatomical convention (the patient's
-  right side appears on the viewer's right when viewed from behind).
+- **Body mass** — set it from either the toolbar or the side panel (the
+  two fields stay in sync); it scales every segment's mass in the
+  biomechanics calculations below.
 - **Joint angle display** — a global switch shows the flexion angle
   (0–180°, where 180° is fully extended) at every joint.
 - **Isolate a joint** — click any joint to fade everything else out and

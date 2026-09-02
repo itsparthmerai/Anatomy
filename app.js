@@ -89,7 +89,6 @@
 
   const state = {
     joints: freshState(),
-    view: "anterior",
     showAllAngles: false,
     selected: null,
     dragging: null,
@@ -183,15 +182,6 @@
     return pos;
   }
 
-  function toScreen(pt) {
-    return state.view === "posterior" ? { x: VBW - pt.x, y: pt.y } : { x: pt.x, y: pt.y };
-  }
-
-  function toModel(pt) {
-    // mirroring is self-inverse
-    return toScreen(pt);
-  }
-
   function jointFlexion(aVec, bVec) {
     const a1 = Math.atan2(aVec.y, aVec.x);
     const a2 = Math.atan2(bVec.y, bVec.x);
@@ -246,8 +236,7 @@
   // ---------------------------------------------------------------
   function render() {
     const pos = computePositions();
-    const screenPos = {};
-    for (const id of JOINT_ORDER) screenPos[id] = toScreen(pos[id]);
+    const screenPos = pos;
 
     clear(gShapes);
     clear(gBones);
@@ -260,11 +249,18 @@
     drawBiomechanics(screenPos, pos);
     drawJoints(screenPos, pos);
 
-    document.getElementById("viewTag").textContent =
-      state.view === "anterior" ? "Anterior view" : "Posterior view";
-
     renderSidePanel(pos);
     updateBioPanel(pos);
+    syncMassInputs();
+  }
+
+  // both the toolbar and the empty-state panel expose a body-mass
+  // field; keep whichever one isn't currently being typed into in sync
+  function syncMassInputs() {
+    MASS_INPUT_IDS.forEach((id) => {
+      const input = document.getElementById(id);
+      if (document.activeElement !== input) input.value = state.bodyMass;
+    });
   }
 
   // -- isolation helpers for shape rendering -----------------------
@@ -348,7 +344,7 @@
   }
 
   // -- vertebral column: a stack of small bodies along a segment ----
-  function drawVertebrae(group, from, to, count, wStart, wEnd, cls, spinous) {
+  function drawVertebrae(group, from, to, count, wStart, wEnd, cls) {
     const ang = screenAngle(from, to) + 90;
     for (let i = 0; i < count; i++) {
       const t = (i + 0.5) / count;
@@ -359,16 +355,11 @@
       group.appendChild(
         el("rect", { x: -w / 2, y: -4, width: w, height: 8, rx: 2.5, class: cls, transform })
       );
-      if (spinous) {
-        group.appendChild(
-          el("path", { d: "M -2.5 4 L 2.5 4 L 0 9 Z", class: cls, transform })
-        );
-      }
     }
   }
 
-  // -- ribcage, sternum/scapulae, spine column ----------------------
-  function drawTorso(gShapes, gMarks, screenPos, anterior) {
+  // -- ribcage, sternum, costal cartilage, spine column -------------
+  function drawTorso(gShapes, gMarks, screenPos) {
     const chest = screenPos.chest, pelvis = screenPos.pelvis;
     const rot = screenAngle(pelvis, chest) + 90;
     const len = Math.hypot(chest.x - pelvis.x, chest.y - pelvis.y);
@@ -395,8 +386,8 @@
           transform: `rotate(${rot} ${midX} ${midY})`,
         })
       );
-      // costal cartilage: connects the front of each rib to the sternum (anterior only)
-      if (anterior && i > 0) {
+      // costal cartilage: connects the front of each rib to the sternum
+      if (i > 0) {
         gMarks.appendChild(
           el("path", {
             d: `M ${midX - rx * 0.55} ${midY + dy - 3} Q ${midX - 6} ${midY + dy + 4} ${midX - 5} ${midY + dy + 10}`,
@@ -414,36 +405,23 @@
       }
     }
 
-    if (anterior) {
-      // sternum: manubrium (wider) tapering into the narrower body
-      gShapes.appendChild(
-        el("path", {
-          d: `M ${midX - 8} ${midY - 34} L ${midX + 8} ${midY - 34} L ${midX + 6} ${midY - 18}
-              L ${midX + 4.5} ${midY - 18} L ${midX + 4.5} ${midY + 16} L ${midX - 4.5} ${midY + 16}
-              L ${midX - 4.5} ${midY - 18} L ${midX - 6} ${midY - 18} Z`,
-          class: cls,
-          transform: `rotate(${rot} ${midX} ${midY})`,
-        })
-      );
-    } else {
-      for (const side of [-1, 1]) {
-        const bx = midX + side * 18, by = midY - 20;
-        gMarks.appendChild(
-          el("path", {
-            d: `M ${bx} ${by} L ${bx + side * 18} ${by + 14} L ${bx + side * 4} ${by + 34} Z`,
-            class: markCls,
-            transform: `rotate(${rot} ${midX} ${midY})`,
-          })
-        );
-      }
-    }
+    // sternum: manubrium (wider) tapering into the narrower body
+    gShapes.appendChild(
+      el("path", {
+        d: `M ${midX - 8} ${midY - 34} L ${midX + 8} ${midY - 34} L ${midX + 6} ${midY - 18}
+            L ${midX + 4.5} ${midY - 18} L ${midX + 4.5} ${midY + 16} L ${midX - 4.5} ${midY + 16}
+            L ${midX - 4.5} ${midY - 18} L ${midX - 6} ${midY - 18} Z`,
+        class: cls,
+        transform: `rotate(${rot} ${midX} ${midY})`,
+      })
+    );
 
-    drawVertebrae(gShapes, pelvis, chest, 5, 15, 12, cls, !anterior);
-    drawVertebrae(gShapes, chest, screenPos.neck, 3, 10, 8, shapeClass("torso-shape", ["chest", "neck"]), !anterior);
+    drawVertebrae(gShapes, pelvis, chest, 5, 15, 12, cls);
+    drawVertebrae(gShapes, chest, screenPos.neck, 3, 10, 8, shapeClass("torso-shape", ["chest", "neck"]));
   }
 
-  // -- skull: cranium always, jaw/eyes (anterior) or suture (posterior) --
-  function drawSkull(gShapes, gMarks, screenPos, anterior) {
+  // -- skull: cranium, jaw, eye sockets, nose, and teeth -------------
+  function drawSkull(gShapes, gMarks, screenPos) {
     const head = screenPos.head, neck = screenPos.neck;
     const rot = screenAngle(neck, head) + 90;
     const cx = neck.x + (head.x - neck.x) * 0.55;
@@ -458,24 +436,18 @@
         class: cls, transform,
       })
     );
-
-    if (anterior) {
-      gShapes.appendChild(
-        el("path", { d: "M -8 14 C -9 22 -5 29 0 30 C 5 29 9 22 8 14 Z", class: cls, transform })
+    gShapes.appendChild(
+      el("path", { d: "M -8 14 C -9 22 -5 29 0 30 C 5 29 9 22 8 14 Z", class: cls, transform })
+    );
+    const socketCls = shapeClass("eye-socket", ["head", "neck"]);
+    gMarks.appendChild(el("circle", { cx: -8, cy: 0, r: 4.5, class: socketCls, transform }));
+    gMarks.appendChild(el("circle", { cx: 8, cy: 0, r: 4.5, class: socketCls, transform }));
+    gMarks.appendChild(el("path", { d: "M -2 6 L 2 6 L 0 11 Z", class: markCls, transform }));
+    for (let i = -4; i <= 4; i++) {
+      const tx = i * 1.6;
+      gMarks.appendChild(
+        el("line", { x1: tx, y1: 25, x2: tx, y2: 28.5, class: markCls, transform })
       );
-      const socketCls = shapeClass("eye-socket", ["head", "neck"]);
-      gMarks.appendChild(el("circle", { cx: -8, cy: 0, r: 4.5, class: socketCls, transform }));
-      gMarks.appendChild(el("circle", { cx: 8, cy: 0, r: 4.5, class: socketCls, transform }));
-      gMarks.appendChild(el("path", { d: "M -2 6 L 2 6 L 0 11 Z", class: markCls, transform }));
-      for (let i = -4; i <= 4; i++) {
-        const tx = i * 1.6;
-        gMarks.appendChild(
-          el("line", { x1: tx, y1: 25, x2: tx, y2: 28.5, class: markCls, transform })
-        );
-      }
-    } else {
-      gMarks.appendChild(el("line", { x1: 0, y1: -24, x2: 0, y2: 12, class: markCls, transform }));
-      gMarks.appendChild(el("circle", { cx: 0, cy: 13, r: 1.6, class: markCls, transform }));
     }
   }
 
@@ -539,11 +511,9 @@
   }
 
   function drawSkeletonBody(screenPos) {
-    const anterior = state.view === "anterior";
-
     drawPelvis(gShapes, gShapes, screenPos);
-    drawTorso(gShapes, gMarks, screenPos, anterior);
-    drawSkull(gShapes, gMarks, screenPos, anterior);
+    drawTorso(gShapes, gMarks, screenPos);
+    drawSkull(gShapes, gMarks, screenPos);
 
     for (const side of ["L", "R"]) {
       const chest = screenPos.chest;
@@ -571,9 +541,7 @@
       drawLongBone(gBones, knee, ankle, 3, 5, 8, 6, shapeClass("bone-shape-thin", ["ankle" + side]));
       drawFoot(gBones, ankle, foot, shapeClass("bone-shape", ["foot" + side]));
 
-      if (anterior) {
-        gMarks.appendChild(el("circle", { cx: knee.x, cy: knee.y, r: 6, class: shapeClass("detail-mark", ["knee" + side]) }));
-      }
+      gMarks.appendChild(el("circle", { cx: knee.x, cy: knee.y, r: 6, class: shapeClass("detail-mark", ["knee" + side]) }));
     }
   }
 
@@ -680,7 +648,7 @@
   }
 
   function drawComMarker(group, modelPos) {
-    const com = toScreen(computeBodyCOM(modelPos));
+    const com = computeBodyCOM(modelPos);
     const r = 9;
     group.appendChild(el("circle", { cx: com.x, cy: com.y, r, class: "com-marker" }));
     group.appendChild(el("line", { x1: com.x - r - 5, y1: com.y, x2: com.x + r + 5, y2: com.y, class: "com-crosshair" }));
@@ -862,8 +830,7 @@
 
   function onPointerMove(evt) {
     if (!state.dragging || evt.pointerId !== activePointerId) return;
-    const svgPt = svgPointFromEvent(evt);
-    const modelPt = toModel(svgPt);
+    const modelPt = svgPointFromEvent(evt);
     const j = state.joints[state.dragging];
 
     if (j.draggable === "translate") {
@@ -907,19 +874,6 @@
   // ---------------------------------------------------------------
   // Toolbar wiring
   // ---------------------------------------------------------------
-  document.querySelectorAll(".view-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".view-btn").forEach((b) => {
-        b.classList.remove("active");
-        b.setAttribute("aria-selected", "false");
-      });
-      btn.classList.add("active");
-      btn.setAttribute("aria-selected", "true");
-      state.view = btn.getAttribute("data-view");
-      render();
-    });
-  });
-
   document.getElementById("angleToggle").addEventListener("change", (evt) => {
     state.showAllAngles = evt.target.checked;
     render();
@@ -936,15 +890,23 @@
     render();
   });
 
-  document.getElementById("bodyMassInput").addEventListener("input", (evt) => {
-    const val = parseFloat(evt.target.value);
-    state.bodyMass = Number.isFinite(val) && val > 0 ? val : state.bodyMass;
-    // mass changed -> re-derive force/velocity from the current acceleration
+  const MASS_INPUT_IDS = ["bodyMassInput", "bodyMassInput2"];
+
+  function setBodyMass(val) {
+    if (!Number.isFinite(val) || val <= 0) return;
+    state.bodyMass = val;
+    // mass changed -> re-derive force from the current acceleration
     const info = getSegmentInfo(state.selected);
     if (info) {
       state.kinetics.F = info.m * state.kinetics.a;
     }
     render();
+  }
+
+  MASS_INPUT_IDS.forEach((id) => {
+    document.getElementById(id).addEventListener("input", (evt) => {
+      setBodyMass(parseFloat(evt.target.value));
+    });
   });
 
   function wireBioToggle(checkboxId, key) {
