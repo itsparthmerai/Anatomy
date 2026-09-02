@@ -289,10 +289,89 @@ body {
 
 /* ---------- Biomechanics panel ---------- */
 
-.bio-divider {
+/* ---------- Range of motion gauge ---------- */
+
+.rom-divider {
   height: 1px;
   background: var(--border);
   margin: 18px 0 14px;
+}
+
+.rom-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 10px 0 8px;
+}
+
+.rom-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.rom-value {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.rom-of {
+  font-size: 12px;
+}
+
+.rom-track {
+  position: relative;
+  height: 10px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  overflow: visible;
+}
+
+.rom-normal-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(20, 184, 166, 0.25);
+  border-radius: 5px 0 0 5px;
+}
+
+.rom-exceed-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(226, 88, 62, 0.22);
+  border-radius: 0 5px 5px 0;
+}
+
+.rom-marker {
+  position: absolute;
+  top: -3px;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: translateX(-50%);
+  transition: left 0.15s ease, background 0.15s ease;
+}
+
+.rom-marker.exceeds { background: #e2583e; }
+
+.rom-caption {
+  font-size: 12.5px;
+  color: var(--accent-2);
+  margin: 9px 0 0;
+}
+
+.rom-caption.exceeds { color: #e2583e; }
+
+.rom-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 8px 0 0;
 }
 
 .bio-segment {

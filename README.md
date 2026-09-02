@@ -27,6 +27,10 @@ then visit `http://localhost:8080`.
   (0–180°, where 180° is fully extended) shown both on the canvas and in
   the side panel. Click empty space or press `Esc` to clear the
   selection.
+- **Range of motion, when a joint is isolated** — a gauge compares the
+  joint's current flexion against typical adult normal ranges from
+  goniometry references (e.g., knee flexion 0–135°), with a clear flag
+  when the pose exceeds that range.
 - **Biomechanics, when a joint is isolated** — toggle Force, Velocity,
   Acceleration, Moment, Center of Mass, and Ground Reaction Force for the
   segment that joint controls. Segment mass, center-of-mass location, and
