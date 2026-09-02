@@ -200,6 +200,41 @@
   }
 
   // ---------------------------------------------------------------
+  // Range of motion: typical adult normal ranges (goniometry
+  // references, degrees of flexion from anatomical zero). Our own
+  // flexion angle is 180 = fully extended, 0 = fully folded, so it
+  // converts to "degrees of flexion" as flex = 180 - angle. That
+  // scale can't go negative, so this model has no way to represent
+  // hyperextension past neutral -- flagged in the UI copy rather
+  // than silently ignored.
+  // ---------------------------------------------------------------
+  const ROM_RANGES = {
+    chest:     { label: "Trunk flexion", max: 80 },
+    neck:      { label: "Neck flexion", max: 50 },
+    shoulderL: { label: "Shoulder flexion", max: 180 },
+    shoulderR: { label: "Shoulder flexion", max: 180 },
+    elbowL:    { label: "Elbow flexion", max: 150 },
+    elbowR:    { label: "Elbow flexion", max: 150 },
+    wristL:    { label: "Wrist flexion", max: 80 },
+    wristR:    { label: "Wrist flexion", max: 80 },
+    hipL:      { label: "Hip flexion", max: 120 },
+    hipR:      { label: "Hip flexion", max: 120 },
+    kneeL:     { label: "Knee flexion", max: 135 },
+    kneeR:     { label: "Knee flexion", max: 135 },
+    ankleL:    { label: "Ankle flexion (dorsi + plantar)", max: 70 },
+    ankleR:    { label: "Ankle flexion (dorsi + plantar)", max: 70 },
+  };
+
+  function getRomInfo(jointId, pos) {
+    const rom = ROM_RANGES[jointId];
+    if (!rom) return null;
+    const angle = getFlexionAngle(jointId, pos);
+    if (angle === null) return null;
+    const flex = 180 - angle;
+    return { ...rom, flex, exceeds: flex > rom.max };
+  }
+
+  // ---------------------------------------------------------------
   // SVG helpers
   // ---------------------------------------------------------------
   const SVG_NS = "http://www.w3.org/2000/svg";
@@ -249,6 +284,7 @@
     drawJoints(screenPos, pos);
 
     renderSidePanel(pos);
+    updateRomPanel(pos);
     updateBioPanel(pos);
     syncMassInputs();
   }
@@ -730,6 +766,39 @@
       angleEl.textContent = `${angle}°`;
       caption.textContent = "Angle between the two adjoining bones. 180° is fully extended, smaller values mean more flexed.";
     }
+  }
+
+  function updateRomPanel(modelPos) {
+    const romSection = document.getElementById("romSection");
+    const rom = state.selected ? getRomInfo(state.selected, modelPos) : null;
+
+    if (!rom) {
+      romSection.hidden = true;
+      return;
+    }
+    romSection.hidden = false;
+
+    document.getElementById("romLabel").textContent = rom.label;
+    document.getElementById("romValueNum").textContent = `${Math.round(rom.flex)}°`;
+    document.getElementById("romValueOf").textContent = `of 0–${rom.max}°`;
+
+    const displayMax = rom.max * 1.3;
+    const normalPct = Math.min(100, (rom.max / displayMax) * 100);
+    document.getElementById("romNormalZone").style.width = `${normalPct}%`;
+    const exceedZone = document.getElementById("romExceedZone");
+    exceedZone.style.left = `${normalPct}%`;
+    exceedZone.style.width = `${100 - normalPct}%`;
+
+    const markerPct = Math.min(100, (rom.flex / displayMax) * 100);
+    const marker = document.getElementById("romMarker");
+    marker.style.left = `${markerPct}%`;
+    marker.classList.toggle("exceeds", rom.exceeds);
+
+    const caption = document.getElementById("romCaption");
+    caption.classList.toggle("exceeds", rom.exceeds);
+    caption.textContent = rom.exceeds
+      ? `Exceeds the typical normal range by ${Math.round(rom.flex - rom.max)}°.`
+      : "Within the typical normal range.";
   }
 
   // -- biomechanics side-panel readouts (updates existing DOM nodes -
