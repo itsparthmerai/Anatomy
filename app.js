@@ -89,7 +89,6 @@
 
   const state = {
     joints: freshState(),
-    showAllAngles: false,
     selected: null,
     dragging: null,
     bodyMass: 70,
@@ -577,7 +576,7 @@
       // angle label
       const angle = getFlexionAngle(id, modelPos);
       if (angle !== null) {
-        const showLabel = state.selected ? selected : state.showAllAngles;
+        const showLabel = selected;
         const labelCls = ["angle-label"];
         if (selected) labelCls.push("selected");
         if (!showLabel) labelCls.push("dimmed");
@@ -874,11 +873,6 @@
   // ---------------------------------------------------------------
   // Toolbar wiring
   // ---------------------------------------------------------------
-  document.getElementById("angleToggle").addEventListener("change", (evt) => {
-    state.showAllAngles = evt.target.checked;
-    render();
-  });
-
   document.getElementById("resetBtn").addEventListener("click", () => {
     state.joints = freshState();
     selectJoint(null);

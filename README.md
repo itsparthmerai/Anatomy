@@ -22,12 +22,11 @@ then visit `http://localhost:8080`.
 - **Body mass** — set it from either the toolbar or the side panel (the
   two fields stay in sync); it scales every segment's mass in the
   biomechanics calculations below.
-- **Joint angle display** — a global switch shows the flexion angle
-  (0–180°, where 180° is fully extended) at every joint.
 - **Isolate a joint** — click any joint to fade everything else out and
-  focus on just that joint's two adjoining bones, with its angle shown in
-  the side panel regardless of the global toggle. Click empty space or
-  press `Esc` to clear the selection.
+  focus on just that joint's two adjoining bones, with its flexion angle
+  (0–180°, where 180° is fully extended) shown both on the canvas and in
+  the side panel. Click empty space or press `Esc` to clear the
+  selection.
 - **Biomechanics, when a joint is isolated** — toggle Force, Velocity,
   Acceleration, Moment, Center of Mass, and Ground Reaction Force for the
   segment that joint controls. Segment mass, center-of-mass location, and
