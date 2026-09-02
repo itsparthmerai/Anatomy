@@ -32,6 +32,32 @@
     <main class="stage">
       <div class="canvas-wrap">
         <svg id="skeletonSvg" viewBox="0 0 480 640" preserveAspectRatio="xMidYMid meet" aria-label="Interactive skeleton diagram">
+          <defs>
+            <linearGradient id="boneGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ecdfae" />
+              <stop offset="45%" stop-color="#d8c48c" />
+              <stop offset="100%" stop-color="#a68a55" />
+            </linearGradient>
+            <linearGradient id="boneGradHi" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#faf0cc" />
+              <stop offset="45%" stop-color="#efe0ad" />
+              <stop offset="100%" stop-color="#cdb87e" />
+            </linearGradient>
+            <linearGradient id="boneGradThin" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ddcb9c" />
+              <stop offset="100%" stop-color="#9c8250" />
+            </linearGradient>
+            <radialGradient id="torsoGrad" cx="35%" cy="28%" r="78%">
+              <stop offset="0%" stop-color="#efe2b6" />
+              <stop offset="60%" stop-color="#d6c191" />
+              <stop offset="100%" stop-color="#a28755" />
+            </radialGradient>
+            <radialGradient id="torsoGradHi" cx="35%" cy="28%" r="78%">
+              <stop offset="0%" stop-color="#faf0cf" />
+              <stop offset="60%" stop-color="#eddfb0" />
+              <stop offset="100%" stop-color="#cdb87e" />
+            </radialGradient>
+          </defs>
           <g id="shapesGroup"></g>
           <g id="bonesGroup"></g>
           <g id="marksGroup"></g>
