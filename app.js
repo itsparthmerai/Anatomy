@@ -43,6 +43,40 @@
 
   const JOINT_ORDER = Object.keys(BLUEPRINT);
 
+  // ---------------------------------------------------------------
+  // Anthropometric segment table (Winter, "Biomechanics and Motor
+  // Control of Human Movement" — standard adult segment parameters).
+  // Each isolatable joint maps to the body segment it forms the
+  // proximal or distal end of: massFrac is the segment's mass as a
+  // fraction of total body mass; comFrac is the distance from the
+  // segment's proximal end to its center of mass, as a fraction of
+  // segment length; radGyrFrac is the radius of gyration about the
+  // segment's own center of mass, also as a fraction of length;
+  // lengthM is a representative adult segment length in meters.
+  // ---------------------------------------------------------------
+  const SEGMENTS = {
+    chest:     { proximal: "pelvis", label: "Trunk",     massFrac: 0.477, comFrac: 0.50, radGyrFrac: 0.50,  lengthM: 0.52 },
+    neck:      { proximal: "chest",  label: "Neck",      massFrac: 0.020, comFrac: 0.50, radGyrFrac: 0.50,  lengthM: 0.12 },
+    head:      { proximal: "neck",   label: "Head",      massFrac: 0.081, comFrac: 0.55, radGyrFrac: 0.495, lengthM: 0.24 },
+    shoulderL: { proximal: "chest",  label: "Clavicle (L)", massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.16 },
+    shoulderR: { proximal: "chest",  label: "Clavicle (R)", massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.16 },
+    hipL:      { proximal: "pelvis", label: "Pelvic girdle (L)", massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.13 },
+    hipR:      { proximal: "pelvis", label: "Pelvic girdle (R)", massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.13 },
+    elbowL:    { proximal: "shoulderL", label: "Upper arm (L)", massFrac: 0.028, comFrac: 0.436, radGyrFrac: 0.322, lengthM: 0.29 },
+    elbowR:    { proximal: "shoulderR", label: "Upper arm (R)", massFrac: 0.028, comFrac: 0.436, radGyrFrac: 0.322, lengthM: 0.29 },
+    wristL:    { proximal: "elbowL", label: "Forearm (L)", massFrac: 0.016, comFrac: 0.430, radGyrFrac: 0.303, lengthM: 0.26 },
+    wristR:    { proximal: "elbowR", label: "Forearm (R)", massFrac: 0.016, comFrac: 0.430, radGyrFrac: 0.303, lengthM: 0.26 },
+    handL:     { proximal: "wristL", label: "Hand (L)", massFrac: 0.006, comFrac: 0.506, radGyrFrac: 0.297, lengthM: 0.19 },
+    handR:     { proximal: "wristR", label: "Hand (R)", massFrac: 0.006, comFrac: 0.506, radGyrFrac: 0.297, lengthM: 0.19 },
+    kneeL:     { proximal: "hipL", label: "Thigh (L)", massFrac: 0.100, comFrac: 0.433, radGyrFrac: 0.323, lengthM: 0.42 },
+    kneeR:     { proximal: "hipR", label: "Thigh (R)", massFrac: 0.100, comFrac: 0.433, radGyrFrac: 0.323, lengthM: 0.42 },
+    ankleL:    { proximal: "kneeL", label: "Shank (L)", massFrac: 0.0465, comFrac: 0.433, radGyrFrac: 0.302, lengthM: 0.43 },
+    ankleR:    { proximal: "kneeR", label: "Shank (R)", massFrac: 0.0465, comFrac: 0.433, radGyrFrac: 0.302, lengthM: 0.43 },
+    footL:     { proximal: "ankleL", label: "Foot (L)", massFrac: 0.0145, comFrac: 0.50, radGyrFrac: 0.475, lengthM: 0.26 },
+    footR:     { proximal: "ankleR", label: "Foot (R)", massFrac: 0.0145, comFrac: 0.50, radGyrFrac: 0.475, lengthM: 0.26 },
+  };
+  const G = 9.81; // m/s^2
+
   function freshState() {
     const joints = {};
     for (const id of JOINT_ORDER) {
@@ -59,7 +93,77 @@
     showAllAngles: false,
     selected: null,
     dragging: null,
+    bodyMass: 70,
+    bio: { force: false, velocity: false, acceleration: false, moment: false, com: false, grf: false },
+    kinetics: { v: 0, a: 0, F: 0, dt: 0.2 },
   };
+
+  // ---------------------------------------------------------------
+  // Biomechanics: segment mass/inertia, and the v <-> a <-> F coupling
+  // ---------------------------------------------------------------
+  function getSegmentInfo(jointId) {
+    const seg = SEGMENTS[jointId];
+    if (!seg) return null;
+    const m = seg.massFrac * state.bodyMass;
+    const r = seg.comFrac * seg.lengthM;
+    const radGyr = seg.radGyrFrac * seg.lengthM;
+    const iCom = m * radGyr * radGyr;
+    const iJoint = iCom + m * r * r; // parallel axis theorem
+    return { ...seg, m, r, iCom, iJoint };
+  }
+
+  function setVelocity(v) {
+    state.kinetics.v = v;
+    state.kinetics.a = v / state.kinetics.dt;
+    const info = getSegmentInfo(state.selected);
+    state.kinetics.F = info ? info.m * state.kinetics.a : 0;
+  }
+
+  function setAcceleration(a) {
+    state.kinetics.a = a;
+    state.kinetics.v = a * state.kinetics.dt;
+    const info = getSegmentInfo(state.selected);
+    state.kinetics.F = info ? info.m * a : 0;
+  }
+
+  function setForce(F) {
+    state.kinetics.F = F;
+    const info = getSegmentInfo(state.selected);
+    const a = info && info.m > 0 ? F / info.m : 0;
+    state.kinetics.a = a;
+    state.kinetics.v = a * state.kinetics.dt;
+  }
+
+  function resetKinetics() {
+    state.kinetics.v = 0;
+    state.kinetics.a = 0;
+    state.kinetics.F = 0;
+  }
+
+  function computeBodyCOM(pos) {
+    let sumX = 0, sumY = 0, sumM = 0;
+    for (const [jointId, seg] of Object.entries(SEGMENTS)) {
+      const proximal = pos[seg.proximal];
+      const distal = pos[jointId];
+      const comX = proximal.x + (distal.x - proximal.x) * seg.comFrac;
+      const comY = proximal.y + (distal.y - proximal.y) * seg.comFrac;
+      sumX += comX * seg.massFrac;
+      sumY += comY * seg.massFrac;
+      sumM += seg.massFrac;
+    }
+    return { x: sumX / sumM, y: sumY / sumM };
+  }
+
+  function computeGRF() {
+    const bodyWeight = state.bodyMass * G;
+    const info = getSegmentInfo(state.selected);
+    if (!info) return bodyWeight;
+    // Simplified single-segment model: treats the isolated segment's
+    // acceleration as vertical and adds its inertial force to total
+    // body weight, the same form as the classic "person on a scale in
+    // an accelerating elevator" result, F = W + m*a.
+    return bodyWeight + info.m * state.kinetics.a;
+  }
 
   // ---------------------------------------------------------------
   // Forward kinematics
@@ -114,6 +218,7 @@
   const gShapes = document.getElementById("shapesGroup");
   const gBones = document.getElementById("bonesGroup");
   const gMarks = document.getElementById("marksGroup");
+  const gBio = document.getElementById("bioGroup");
   const gJoints = document.getElementById("jointsGroup");
   const gLabels = document.getElementById("labelsGroup");
 
@@ -147,16 +252,19 @@
     clear(gShapes);
     clear(gBones);
     clear(gMarks);
+    clear(gBio);
     clear(gJoints);
     clear(gLabels);
 
     drawSkeletonBody(screenPos);
+    drawBiomechanics(screenPos, pos);
     drawJoints(screenPos, pos);
 
     document.getElementById("viewTag").textContent =
       state.view === "anterior" ? "Anterior view" : "Posterior view";
 
     renderSidePanel(pos);
+    updateBioPanel(pos);
   }
 
   // -- isolation helpers for shape rendering -----------------------
@@ -515,6 +623,124 @@
     }
   }
 
+  // -- biomechanics markers: vectors, moment arc, COM, GRF ----------
+  function drawVector(group, x, y, dirX, dirY, value, pxPerUnit, maxLen, cls, label, unit) {
+    let len = value * pxPerUnit;
+    const sign = len < 0 ? -1 : 1;
+    len = Math.min(Math.abs(len), maxLen) * sign;
+    if (Math.abs(len) < 3) return;
+
+    const dx = dirX * len, dy = dirY * len;
+    const tipX = x + dx, tipY = y + dy;
+    const ang = Math.atan2(dy, dx);
+    const headLen = 9, headWidth = 5;
+    const backX = tipX - Math.cos(ang) * headLen, backY = tipY - Math.sin(ang) * headLen;
+    const leftX = backX - Math.sin(ang) * headWidth, leftY = backY + Math.cos(ang) * headWidth;
+    const rightX = backX + Math.sin(ang) * headWidth, rightY = backY - Math.cos(ang) * headWidth;
+
+    group.appendChild(el("line", { x1: x, y1: y, x2: backX, y2: backY, class: `vec-line ${cls}` }));
+    group.appendChild(el("path", { d: `M ${tipX} ${tipY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z`, class: `vec-head ${cls}` }));
+
+    const text = el("text", { x: tipX + dirX * 12, y: tipY + dirY * 12, class: `vec-label ${cls}` });
+    text.textContent = `${label} ${value.toFixed(1)}${unit}`;
+    group.appendChild(text);
+  }
+
+  function drawMomentArc(group, center, info) {
+    const alpha = info.r > 0 ? state.kinetics.a / info.r : 0; // angular acceleration, rad/s^2
+    const M = info.iJoint * alpha;
+    if (Math.abs(M) < 0.05) return;
+
+    const radius = 26;
+    const sweepDeg = Math.min(30 + Math.abs(M) * 6, 260);
+    const dir = M >= 0 ? 1 : -1; // positive M sweeps counter-clockwise
+    const startDeg = -90;
+    const endDeg = startDeg + dir * sweepDeg;
+    const startRad = (startDeg * Math.PI) / 180, endRad = (endDeg * Math.PI) / 180;
+    const startX = center.x + radius * Math.cos(startRad), startY = center.y + radius * Math.sin(startRad);
+    const endX = center.x + radius * Math.cos(endRad), endY = center.y + radius * Math.sin(endRad);
+    const largeArc = sweepDeg > 180 ? 1 : 0;
+    const sweepFlag = dir > 0 ? 1 : 0;
+
+    group.appendChild(
+      el("path", { d: `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} ${sweepFlag} ${endX} ${endY}`, class: "moment-arc" })
+    );
+
+    const radialX = Math.cos(endRad), radialY = Math.sin(endRad);
+    const tangentX = -radialY * dir, tangentY = radialX * dir;
+    const tipX = endX + tangentX * 4, tipY = endY + tangentY * 4;
+    const backX = endX - tangentX * 6, backY = endY - tangentY * 6;
+    const leftX = backX + radialX * 5, leftY = backY + radialY * 5;
+    const rightX = backX - radialX * 5, rightY = backY - radialY * 5;
+    group.appendChild(el("path", { d: `M ${tipX} ${tipY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z`, class: "moment-head" }));
+
+    const label = el("text", { x: center.x + radius + 6, y: center.y - radius, class: "vec-label", fill: "#b5852f" });
+    label.textContent = `M ${M.toFixed(1)} N·m`;
+    group.appendChild(label);
+  }
+
+  function drawComMarker(group, modelPos) {
+    const com = toScreen(computeBodyCOM(modelPos));
+    const r = 9;
+    group.appendChild(el("circle", { cx: com.x, cy: com.y, r, class: "com-marker" }));
+    group.appendChild(el("line", { x1: com.x - r - 5, y1: com.y, x2: com.x + r + 5, y2: com.y, class: "com-crosshair" }));
+    group.appendChild(el("line", { x1: com.x, y1: com.y - r - 5, x2: com.x, y2: com.y + r + 5, class: "com-crosshair" }));
+    const label = el("text", { x: com.x + r + 8, y: com.y + 4, class: "com-label" });
+    label.textContent = "COM";
+    group.appendChild(label);
+  }
+
+  function drawGrfArrow(group, screenPos) {
+    const fl = screenPos.footL, fr = screenPos.footR;
+    const baseX = (fl.x + fr.x) / 2;
+    const baseY = Math.max(fl.y, fr.y) + 16;
+    const grf = computeGRF();
+    const pxPerN = 0.16;
+    const len = Math.min(Math.abs(grf) * pxPerN, 110);
+    const tipY = baseY - len;
+
+    group.appendChild(el("line", { x1: baseX, y1: baseY, x2: baseX, y2: tipY + 9, class: "grf-line" }));
+    group.appendChild(el("path", { d: `M ${baseX} ${tipY} L ${baseX - 6} ${tipY + 9} L ${baseX + 6} ${tipY + 9} Z`, class: "grf-head" }));
+
+    const label = el("text", { x: baseX + 10, y: baseY - len / 2, class: "grf-label" });
+    label.textContent = `GRF ${grf.toFixed(0)} N`;
+    group.appendChild(label);
+  }
+
+  function drawBiomechanics(screenPos, modelPos) {
+    if (state.bio.com) drawComMarker(gBio, modelPos);
+    if (!state.selected) return;
+
+    const info = getSegmentInfo(state.selected);
+    if (!info) return;
+
+    if (state.bio.grf) drawGrfArrow(gBio, screenPos);
+
+    const jointPos = screenPos[state.selected];
+    const proxPos = screenPos[info.proximal];
+    const dx = jointPos.x - proxPos.x, dy = jointPos.y - proxPos.y;
+    const boneLen = Math.hypot(dx, dy) || 1;
+    const ux = dx / boneLen, uy = dy / boneLen;
+    const tangentX = -uy, tangentY = ux;
+    const comX = proxPos.x + dx * info.comFrac;
+    const comY = proxPos.y + dy * info.comFrac;
+
+    if (state.bio.velocity) {
+      drawVector(gBio, comX - ux * 14, comY - uy * 14, tangentX, tangentY, state.kinetics.v, 14, 80, "vec-velocity", "v", " m/s");
+    }
+    if (state.bio.acceleration) {
+      drawVector(gBio, comX, comY, tangentX, tangentY, state.kinetics.a, 4, 80, "vec-accel", "a", " m/s²");
+    }
+    if (state.bio.force) {
+      drawVector(gBio, comX + ux * 14, comY + uy * 14, tangentX, tangentY, state.kinetics.F, 0.4, 80, "vec-force", "F", " N");
+    }
+    if (state.bio.moment) {
+      // the moment acts about the segment's pivot (its proximal joint),
+      // not the isolated joint itself, which is the segment's far end
+      drawMomentArc(gBio, proxPos, info);
+    }
+  }
+
   function renderSidePanel(modelPos) {
     const empty = document.getElementById("panelEmpty");
     const filled = document.getElementById("panelSelected");
@@ -539,6 +765,54 @@
     }
   }
 
+  // -- biomechanics side-panel readouts (updates existing DOM nodes -
+  // -- values only - so a focused text input never loses the caret) --
+  function setIfNotFocused(el, value) {
+    if (document.activeElement !== el) el.value = value;
+  }
+
+  function updateBioPanel(modelPos) {
+    const bioSection = document.getElementById("bioSection");
+    const info = state.selected ? getSegmentInfo(state.selected) : null;
+
+    if (!info) {
+      bioSection.hidden = true;
+      return;
+    }
+    bioSection.hidden = false;
+
+    const pivotLabel = state.joints[info.proximal].label;
+    document.getElementById("bioSegmentLabel").textContent =
+      `Segment: ${info.label} · mass ≈ ${info.m.toFixed(2)} kg · pivots at ${pivotLabel}`;
+
+    document.getElementById("fieldForce").hidden = !state.bio.force;
+    document.getElementById("fieldVelocity").hidden = !state.bio.velocity;
+    document.getElementById("fieldAcceleration").hidden = !state.bio.acceleration;
+    document.getElementById("readoutMoment").hidden = !state.bio.moment;
+    document.getElementById("readoutCom").hidden = !state.bio.com;
+    document.getElementById("readoutGrf").hidden = !state.bio.grf;
+
+    setIfNotFocused(document.getElementById("inputForce"), Math.round(state.kinetics.F * 100) / 100);
+    setIfNotFocused(document.getElementById("inputVelocity"), Math.round(state.kinetics.v * 100) / 100);
+    setIfNotFocused(document.getElementById("inputAcceleration"), Math.round(state.kinetics.a * 100) / 100);
+
+    if (state.bio.moment) {
+      const alpha = info.r > 0 ? state.kinetics.a / info.r : 0; // angular accel, rad/s^2
+      const M = info.iJoint * alpha;
+      document.getElementById("readoutMoment").innerHTML = `${M.toFixed(2)} N&middot;m`;
+    }
+
+    if (state.bio.com) {
+      const com = computeBodyCOM(modelPos);
+      document.getElementById("readoutCom").textContent = `x ${com.x.toFixed(0)}, y ${com.y.toFixed(0)} px`;
+    }
+
+    if (state.bio.grf) {
+      const grf = computeGRF();
+      document.getElementById("readoutGrf").textContent = `${grf.toFixed(0)} N`;
+    }
+  }
+
   // ---------------------------------------------------------------
   // Interaction
   // ---------------------------------------------------------------
@@ -551,16 +825,30 @@
 
   let activePointerId = null;
 
+  const BIO_INPUT_IDS = ["inputForce", "inputVelocity", "inputAcceleration"];
+
+  function selectJoint(id) {
+    if (state.selected !== id) {
+      resetKinetics();
+      // clicking the SVG doesn't naturally blur a focused text field here
+      // (pointerdown below calls preventDefault to stop drag-selection),
+      // so drop focus explicitly or the reset value won't get displayed
+      const active = document.activeElement;
+      if (active && BIO_INPUT_IDS.includes(active.id)) active.blur();
+    }
+    state.selected = id;
+  }
+
   function onPointerDown(evt) {
     const target = evt.target.closest("[data-joint]");
     if (!target) {
       // clicked empty space -> clear selection
-      state.selected = null;
+      selectJoint(null);
       render();
       return;
     }
     const id = target.getAttribute("data-joint");
-    state.selected = id;
+    selectJoint(id);
 
     const j = state.joints[id];
     if (j.draggable === true || j.draggable === "translate") {
@@ -611,7 +899,7 @@
 
   document.addEventListener("keydown", (evt) => {
     if (evt.key === "Escape") {
-      state.selected = null;
+      selectJoint(null);
       render();
     }
   });
@@ -639,13 +927,59 @@
 
   document.getElementById("resetBtn").addEventListener("click", () => {
     state.joints = freshState();
-    state.selected = null;
+    selectJoint(null);
     render();
   });
 
   document.getElementById("clearSelectionBtn").addEventListener("click", () => {
-    state.selected = null;
+    selectJoint(null);
     render();
+  });
+
+  document.getElementById("bodyMassInput").addEventListener("input", (evt) => {
+    const val = parseFloat(evt.target.value);
+    state.bodyMass = Number.isFinite(val) && val > 0 ? val : state.bodyMass;
+    // mass changed -> re-derive force/velocity from the current acceleration
+    const info = getSegmentInfo(state.selected);
+    if (info) {
+      state.kinetics.F = info.m * state.kinetics.a;
+    }
+    render();
+  });
+
+  function wireBioToggle(checkboxId, key) {
+    document.getElementById(checkboxId).addEventListener("change", (evt) => {
+      state.bio[key] = evt.target.checked;
+      render();
+    });
+  }
+  wireBioToggle("toggleForce", "force");
+  wireBioToggle("toggleVelocity", "velocity");
+  wireBioToggle("toggleAcceleration", "acceleration");
+  wireBioToggle("toggleMoment", "moment");
+  wireBioToggle("toggleCom", "com");
+  wireBioToggle("toggleGrf", "grf");
+
+  document.getElementById("inputForce").addEventListener("input", (evt) => {
+    const val = parseFloat(evt.target.value);
+    if (Number.isFinite(val)) {
+      setForce(val);
+      render();
+    }
+  });
+  document.getElementById("inputVelocity").addEventListener("input", (evt) => {
+    const val = parseFloat(evt.target.value);
+    if (Number.isFinite(val)) {
+      setVelocity(val);
+      render();
+    }
+  });
+  document.getElementById("inputAcceleration").addEventListener("input", (evt) => {
+    const val = parseFloat(evt.target.value);
+    if (Number.isFinite(val)) {
+      setAcceleration(val);
+      render();
+    }
   });
 
   render();
