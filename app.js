@@ -355,8 +355,9 @@
       gShapes.appendChild(
         el("path", { d: "M -8 14 C -9 22 -5 29 0 30 C 5 29 9 22 8 14 Z", class: cls, transform })
       );
-      gMarks.appendChild(el("circle", { cx: -8, cy: 0, r: 3, class: markCls, transform }));
-      gMarks.appendChild(el("circle", { cx: 8, cy: 0, r: 3, class: markCls, transform }));
+      const socketCls = shapeClass("eye-socket", ["head", "neck"]);
+      gMarks.appendChild(el("circle", { cx: -8, cy: 0, r: 4.5, class: socketCls, transform }));
+      gMarks.appendChild(el("circle", { cx: 8, cy: 0, r: 4.5, class: socketCls, transform }));
       gMarks.appendChild(el("path", { d: "M -2 6 L 2 6 L 0 11 Z", class: markCls, transform }));
       for (let i = -4; i <= 4; i++) {
         const tx = i * 1.6;
@@ -370,19 +371,16 @@
     }
   }
 
-  function drawClavicle(group, chest, shoulder, side, cls) {
+  function drawClavicle(group, chest, shoulder, side, cls, fillCls) {
     const dx = shoulder.x - chest.x, dy = shoulder.y - chest.y;
     const len = Math.hypot(dx, dy) || 1;
     const ux = -dy / len, uy = dx / len;
     const bow = 7 * side;
     const c1x = chest.x + dx * 0.3 + ux * bow, c1y = chest.y + dy * 0.3 + uy * bow;
     const c2x = chest.x + dx * 0.7 - ux * bow, c2y = chest.y + dy * 0.7 - uy * bow;
-    group.appendChild(
-      el("path", {
-        d: `M ${chest.x} ${chest.y} C ${c1x} ${c1y} ${c2x} ${c2y} ${shoulder.x} ${shoulder.y}`,
-        class: cls,
-      })
-    );
+    const d = `M ${chest.x} ${chest.y} C ${c1x} ${c1y} ${c2x} ${c2y} ${shoulder.x} ${shoulder.y}`;
+    group.appendChild(el("path", { d, class: cls, style: "stroke-width:9px" }));
+    group.appendChild(el("path", { d, class: fillCls, style: "stroke-width:5px" }));
   }
 
   function drawHand(group, wrist, hand, cls) {
@@ -432,18 +430,9 @@
     group.appendChild(g);
   }
 
-  function drawGroundShadow(screenPos) {
-    const fl = screenPos.footL, fr = screenPos.footR;
-    const cx = (fl.x + fr.x) / 2;
-    const cy = Math.max(fl.y, fr.y) + 6;
-    const spread = Math.abs(fr.x - fl.x) + 70;
-    gShapes.appendChild(el("ellipse", { cx, cy, rx: spread / 2, ry: 10, class: "ground-shadow" }));
-  }
-
   function drawSkeletonBody(screenPos) {
     const anterior = state.view === "anterior";
 
-    drawGroundShadow(screenPos);
     drawPelvis(gShapes, gShapes, screenPos);
     drawTorso(gShapes, gMarks, screenPos, anterior);
     drawSkull(gShapes, gMarks, screenPos, anterior);
@@ -459,9 +448,13 @@
       const ankle = screenPos["ankle" + side];
       const foot = screenPos["foot" + side];
 
-      drawClavicle(gBones, chest, shoulder, side === "L" ? -1 : 1, shapeClass("clavicle", ["shoulder" + side]));
+      drawClavicle(
+        gBones, chest, shoulder, side === "L" ? -1 : 1,
+        shapeClass("clavicle", ["shoulder" + side]),
+        shapeClass("clavicle-fill", ["shoulder" + side])
+      );
       drawLongBone(gBones, shoulder, elbow, 6, 10, 16, 0, shapeClass("bone-shape", ["elbow" + side]), shapeClass("bone-seam", ["elbow" + side]));
-      drawLongBone(gBones, elbow, wrist, 4.5, 7, 12, 3, shapeClass("bone-shape", ["wrist" + side]));
+      drawLongBone(gBones, elbow, wrist, 4.5, 7, 12, 3, shapeClass("bone-shape", ["wrist" + side]), shapeClass("bone-seam", ["wrist" + side]));
       drawLongBone(gBones, elbow, wrist, 3.5, 6, 10, -3, shapeClass("bone-shape-thin", ["wrist" + side]));
       drawHand(gBones, wrist, hand, shapeClass("bone-shape", ["hand" + side]));
 
