@@ -79,36 +79,6 @@ body {
   font-size: 15px;
 }
 
-.view-switch {
-  display: inline-flex;
-  padding: 3px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-}
-
-.view-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 13px;
-  font-weight: 500;
-  padding: 7px 18px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease;
-}
-
-.view-btn.active {
-  background: var(--accent);
-  color: #ffffff;
-}
-
-.view-btn:not(.active):hover {
-  color: var(--text);
-}
-
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -240,20 +210,6 @@ body {
   touch-action: none;
 }
 
-.view-tag {
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 5px 10px;
-  border-radius: 999px;
-}
-
 /* ---------- Side panel ---------- */
 
 .panel {
@@ -272,6 +228,49 @@ body {
   font-size: 13.5px;
   line-height: 1.55;
   margin: 0 0 18px;
+}
+
+.mass-field {
+  margin: 0 0 20px;
+  padding: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mass-field label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.mass-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mass-field-row input {
+  width: 80px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.mass-field-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.mass-field-row span {
+  color: var(--text-dim);
+  font-size: 13px;
 }
 
 .hints {

@@ -14,11 +14,6 @@
         <span class="brand-name">Kinesis</span>
       </div>
 
-      <div class="view-switch" role="tablist" aria-label="View">
-        <button class="view-btn active" data-view="anterior" role="tab" aria-selected="true">Anterior</button>
-        <button class="view-btn" data-view="posterior" role="tab" aria-selected="false">Posterior</button>
-      </div>
-
       <div class="topbar-actions">
         <label class="mass-input">
           <span>Mass</span>
@@ -44,14 +39,21 @@
           <g id="jointsGroup"></g>
           <g id="labelsGroup"></g>
         </svg>
-
-        <div class="view-tag" id="viewTag">Anterior view</div>
       </div>
 
       <aside class="panel" id="infoPanel">
         <div class="panel-empty" id="panelEmpty">
           <h2>No joint selected</h2>
           <p>Drag any handle to pose the skeleton. Click a joint to isolate it — everything else fades so you can focus on a single motion.</p>
+
+          <div class="mass-field">
+            <label for="bodyMassInput2">Body mass</label>
+            <div class="mass-field-row">
+              <input type="number" id="bodyMassInput2" value="70" min="20" max="200" step="1" />
+              <span>kg</span>
+            </div>
+          </div>
+
           <ul class="hints">
             <li><span>Drag</span> a joint to rotate the bone around it</li>
             <li><span>Click</span> a joint to isolate &amp; inspect it</li>
@@ -121,7 +123,7 @@
     </main>
 
     <footer class="footbar">
-      <span>Drag handles to pose &middot; posterior view mirrors the figure, matching real anatomical convention</span>
+      <span>Drag handles to pose the skeleton &middot; click a joint to isolate it and inspect its angle and biomechanics</span>
     </footer>
   </div>
 
