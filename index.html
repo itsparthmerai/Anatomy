@@ -20,6 +20,11 @@
       </div>
 
       <div class="topbar-actions">
+        <label class="mass-input">
+          <span>Mass</span>
+          <input type="number" id="bodyMassInput" value="70" min="20" max="200" step="1" />
+          <span>kg</span>
+        </label>
         <label class="toggle">
           <input type="checkbox" id="angleToggle" />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
@@ -35,6 +40,7 @@
           <g id="shapesGroup"></g>
           <g id="bonesGroup"></g>
           <g id="marksGroup"></g>
+          <g id="bioGroup"></g>
           <g id="jointsGroup"></g>
           <g id="labelsGroup"></g>
         </svg>
@@ -61,6 +67,54 @@
             <span class="angle-unit">degrees</span>
           </div>
           <p class="angle-caption" id="selJointCaption">Angle between the two adjoining bones. 180° is fully extended.</p>
+
+          <div class="bio-section" id="bioSection">
+            <div class="bio-divider"></div>
+            <span class="panel-kicker">Biomechanics</span>
+            <div class="bio-segment" id="bioSegmentLabel">Segment: —</div>
+
+            <div class="bio-row">
+              <label class="bio-toggle"><input type="checkbox" id="toggleForce" /> Force</label>
+              <div class="bio-field" id="fieldForce" hidden>
+                <input type="number" id="inputForce" step="1" />
+                <span class="bio-unit">N</span>
+              </div>
+            </div>
+
+            <div class="bio-row">
+              <label class="bio-toggle"><input type="checkbox" id="toggleVelocity" /> Velocity</label>
+              <div class="bio-field" id="fieldVelocity" hidden>
+                <input type="number" id="inputVelocity" step="0.1" />
+                <span class="bio-unit">m/s</span>
+              </div>
+            </div>
+
+            <div class="bio-row">
+              <label class="bio-toggle"><input type="checkbox" id="toggleAcceleration" /> Acceleration</label>
+              <div class="bio-field" id="fieldAcceleration" hidden>
+                <input type="number" id="inputAcceleration" step="0.5" />
+                <span class="bio-unit">m/s&sup2;</span>
+              </div>
+            </div>
+
+            <div class="bio-row">
+              <label class="bio-toggle"><input type="checkbox" id="toggleMoment" /> Moment</label>
+              <div class="bio-readout" id="readoutMoment" hidden>— N&middot;m</div>
+            </div>
+
+            <div class="bio-row">
+              <label class="bio-toggle"><input type="checkbox" id="toggleCom" /> Center of mass</label>
+              <div class="bio-readout" id="readoutCom" hidden>—</div>
+            </div>
+
+            <div class="bio-row">
+              <label class="bio-toggle"><input type="checkbox" id="toggleGrf" /> Ground reaction force</label>
+              <div class="bio-readout" id="readoutGrf" hidden>— N</div>
+            </div>
+
+            <p class="bio-caption">Segment mass, center of mass, and moment of inertia come from standard anthropometric tables (Winter) applied to the body mass above. Velocity, acceleration, and force are linked by <em>a = &Delta;v / &Delta;t</em> (&Delta;t = 0.2 s) and Newton's second law <em>F = m&middot;a</em> — edit any one and the others update.</p>
+          </div>
+
           <button class="ghost-btn wide" id="clearSelectionBtn">Clear selection</button>
         </div>
       </aside>

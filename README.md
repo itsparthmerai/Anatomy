@@ -28,12 +28,22 @@ then visit `http://localhost:8080`.
   focus on just that joint's two adjoining bones, with its angle shown in
   the side panel regardless of the global toggle. Click empty space or
   press `Esc` to clear the selection.
+- **Biomechanics, when a joint is isolated** — toggle Force, Velocity,
+  Acceleration, Moment, Center of Mass, and Ground Reaction Force for the
+  segment that joint controls. Segment mass, center-of-mass location, and
+  moment of inertia come from standard anthropometric tables (Winter)
+  scaled by an editable body mass. Velocity, acceleration, and force are
+  entered in text boxes and kept mutually consistent — edit any one and
+  the other two update via `a = Δv/Δt` and Newton's second law `F = m·a`.
+  Center of mass is computed body-wide from every segment's current pose
+  (the segmental method); ground reaction force adds the isolated
+  segment's inertial contribution to total body weight.
 - **Reset pose** — restores the default standing pose.
 
 ## Files
 
 - `index.html` — layout and controls
-- `styles.css` — dark, minimalist visual theme
-- `app.js` — skeleton data model, forward kinematics, rendering, and
-  pointer-based drag/select interaction (plain SVG + vanilla JS, no
-  frameworks or build tools)
+- `styles.css` — light, coloring-book-style visual theme
+- `app.js` — skeleton data model, forward kinematics, rendering,
+  pointer-based drag/select interaction, and the biomechanics model
+  (plain SVG + vanilla JS, no frameworks or build tools)
