@@ -16,6 +16,13 @@ then visit `http://localhost:8080`.
 
 ## Features
 
+- **Anterior / Lateral view toggle** — switch between a front view and a
+  side (sagittal) view. Each is its own independently-posed 2D rig sharing
+  the same joint model, so a drag in one view doesn't affect the other.
+  The lateral rig shortens and angles the shoulder/hip girdle bones
+  forward instead of spreading them left-right, and offsets the two
+  arms/legs slightly fore-and-aft (rather than left-right) so both are
+  still visible in profile — the depth cue a flat front view can't show.
 - **Drag any joint** to rotate the bone that ends there (forward-kinematics
   chain — rotating a shoulder carries the whole arm with it, rotating an
   elbow only moves the forearm/hand).
@@ -41,7 +48,8 @@ then visit `http://localhost:8080`.
   Center of mass is computed body-wide from every segment's current pose
   (the segmental method); ground reaction force adds the isolated
   segment's inertial contribution to total body weight.
-- **Reset pose** — restores the default standing pose.
+- **Reset pose** — restores the default standing pose for whichever view
+  (anterior or lateral) is currently active.
 
 ## Files
 

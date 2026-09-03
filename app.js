@@ -44,6 +44,44 @@
   const JOINT_ORDER = Object.keys(BLUEPRINT);
 
   // ---------------------------------------------------------------
+  // Lateral (side) view: a second, independently-posed blueprint using
+  // the same joint hierarchy. The anterior blueprint spreads the
+  // shoulders/hips wide left-to-right because that's what's visible
+  // from the front; from the side that width isn't visible at all, so
+  // here the girdle bones instead project forward a short distance,
+  // and the two legs/arms lean slightly fore/aft of each other (rather
+  // than left/right) to suggest the near and far limb, exactly the
+  // depth cue a flat front view can't show.
+  // ---------------------------------------------------------------
+  const LATERAL_BLUEPRINT = {
+    pelvis:   { parent: null,      length: 0,   angle: 0,    draggable: "translate", label: "Pelvis" },
+    chest:    { parent: "pelvis",  length: 90,  angle: -90,  draggable: true,  label: "Spine",       angleChild: "neck",   thickness: 13 },
+    neck:     { parent: "chest",   length: 26,  angle: -88,  draggable: true,  label: "Neck",        angleChild: "head",   thickness: 8 },
+    head:     { parent: "neck",    length: 34,  angle: -84,  draggable: true,  label: "Head",        thickness: 8, skull: true },
+
+    shoulderL:{ parent: "chest",   length: 14,  angle: -15,  draggable: false, label: "Shoulder (L)", angleChild: "elbowL", thickness: 7 },
+    shoulderR:{ parent: "chest",   length: 11,  angle: 12,   draggable: false, label: "Shoulder (R)", angleChild: "elbowR", thickness: 7 },
+    hipL:     { parent: "pelvis",  length: 12,  angle: 5,    draggable: false, label: "Hip (L)",      angleChild: "kneeL",  thickness: 7 },
+    hipR:     { parent: "pelvis",  length: 10,  angle: 15,   draggable: false, label: "Hip (R)",      angleChild: "kneeR",  thickness: 7 },
+
+    elbowL:   { parent: "shoulderL", length: 84, angle: 100, draggable: true, label: "Elbow (L)", angleChild: "wristL", thickness: 11 },
+    wristL:   { parent: "elbowL",    length: 74, angle: 100, draggable: true, label: "Wrist (L)", angleChild: "handL",  thickness: 9 },
+    handL:    { parent: "wristL",    length: 26, angle: 100, draggable: true, label: "Hand (L)",  thickness: 7 },
+
+    elbowR:   { parent: "shoulderR", length: 84, angle: 92,  draggable: true, label: "Elbow (R)", angleChild: "wristR", thickness: 11 },
+    wristR:   { parent: "elbowR",    length: 74, angle: 92,  draggable: true, label: "Wrist (R)", angleChild: "handR",  thickness: 9 },
+    handR:    { parent: "wristR",    length: 26, angle: 92,  draggable: true, label: "Hand (R)",  thickness: 7 },
+
+    kneeL:    { parent: "hipL",   length: 108, angle: 100, draggable: true, label: "Knee (L)",  angleChild: "ankleL", thickness: 13 },
+    ankleL:   { parent: "kneeL",  length: 98,  angle: 90,  draggable: true, label: "Ankle (L)", angleChild: "footL",  thickness: 10 },
+    footL:    { parent: "ankleL", length: 32,  angle: 8,   draggable: true, label: "Foot (L)",  thickness: 8 },
+
+    kneeR:    { parent: "hipR",   length: 108, angle: 82,  draggable: true, label: "Knee (R)",  angleChild: "ankleR", thickness: 13 },
+    ankleR:   { parent: "kneeR",  length: 98,  angle: 90,  draggable: true, label: "Ankle (R)", angleChild: "footR",  thickness: 10 },
+    footR:    { parent: "ankleR", length: 32,  angle: 4,   draggable: true, label: "Foot (R)",  thickness: 8 },
+  };
+
+  // ---------------------------------------------------------------
   // Anthropometric segment table (Winter, "Biomechanics and Motor
   // Control of Human Movement" — standard adult segment parameters).
   // Each isolatable joint maps to the body segment it forms the
@@ -77,18 +115,29 @@
   };
   const G = 9.81; // m/s^2
 
-  function freshState() {
+  const BLUEPRINTS = { anterior: BLUEPRINT, lateral: LATERAL_BLUEPRINT };
+
+  function freshState(view) {
     const joints = {};
+    const blueprint = BLUEPRINTS[view];
     for (const id of JOINT_ORDER) {
-      joints[id] = { ...BLUEPRINT[id] };
+      joints[id] = { ...blueprint[id] };
     }
     joints.pelvis.x = ROOT.x;
     joints.pelvis.y = ROOT.y;
     return joints;
   }
 
+  // each view keeps its own pose, so switching back and forth doesn't
+  // lose whatever the user has posed in the other view
+  const poseByView = {
+    anterior: freshState("anterior"),
+    lateral: freshState("lateral"),
+  };
+
   const state = {
-    joints: freshState(),
+    view: "anterior",
+    joints: poseByView.anterior,
     selected: null,
     dragging: null,
     bodyMass: 70,
@@ -486,11 +535,103 @@
     }
   }
 
+  // -- lateral (side-view) torso: an asymmetric profile silhouette --
+  // -- deeper at the front (chest/belly) than the back (spine curve) --
+  function drawPelvisLateral(group, screenPos) {
+    const pel = screenPos.pelvis, chest = screenPos.chest;
+    const rot = screenAngle(pel, chest) + 90;
+    const cls = shapeClass("torso-shape", ["pelvis"]);
+    const transform = `translate(${pel.x} ${pel.y}) rotate(${rot})`;
+    const d = `
+      M -14 -8
+      C -21 -3 -21 10 -14 16
+      C -7 22 7 24 17 18
+      C 25 13 25 1 18 -7
+      C 12 -15 -4 -15 -14 -8
+      Z`;
+    group.appendChild(el("path", { d, class: cls, transform }));
+  }
+
+  function drawTorsoLateral(gShapes, gMarks, screenPos) {
+    const chest = screenPos.chest, pelvis = screenPos.pelvis;
+    const rot = screenAngle(pelvis, chest) + 90;
+    const len = Math.hypot(chest.x - pelvis.x, chest.y - pelvis.y);
+    const midX = (chest.x + pelvis.x) / 2;
+    const midY = (chest.y + pelvis.y) / 2;
+    const cls = shapeClass("torso-shape", ["chest", "pelvis"]);
+    const markCls = shapeClass("detail-mark", ["chest", "pelvis"]);
+    const transform = `translate(${midX} ${midY}) rotate(${rot})`;
+    const h = len * 0.6;
+
+    const d = `
+      M 0 ${-h}
+      C -10 ${-h + 6} -16 ${-h * 0.5} -15 ${-h * 0.1}
+      C -14 ${h * 0.25} -10 ${h * 0.55} -3 ${h * 0.78}
+      L 6 ${h * 0.82}
+      C 34 ${h * 0.6} 40 ${h * 0.15} 38 ${-h * 0.15}
+      C 36 ${-h * 0.45} 26 ${-h * 0.7} 14 ${-h * 0.86}
+      C 8 ${-h * 0.95} 4 ${-h} 0 ${-h}
+      Z`;
+    gShapes.appendChild(el("path", { d, class: cls, transform }));
+
+    const ribCount = 6;
+    for (let i = 0; i < ribCount; i++) {
+      const t = (i + 0.5) / ribCount;
+      const y = -h * 0.78 + t * h * 1.15;
+      const backX = -13 + t * 5;
+      const frontX = 20 + t * 12;
+      gMarks.appendChild(
+        el("path", {
+          d: `M ${backX} ${y - 4} Q ${(backX + frontX) / 2} ${y + 4} ${frontX} ${y}`,
+          class: markCls,
+          transform,
+        })
+      );
+    }
+
+    drawVertebrae(gShapes, pelvis, chest, 5, 15, 12, cls);
+    drawVertebrae(gShapes, chest, screenPos.neck, 3, 10, 8, shapeClass("torso-shape", ["chest", "neck"]));
+  }
+
+  // -- lateral skull: cranium, jaw, one eye, ear, and a nose in profile
+  function drawSkullLateral(gShapes, gMarks, screenPos) {
+    const head = screenPos.head, neck = screenPos.neck;
+    const rot = screenAngle(neck, head) + 90;
+    const cx = neck.x + (head.x - neck.x) * 0.55;
+    const cy = neck.y + (head.y - neck.y) * 0.55;
+    const cls = shapeClass("torso-shape", ["head", "neck"]);
+    const markCls = shapeClass("detail-mark", ["head", "neck"]);
+    const transform = `translate(${cx} ${cy}) rotate(${rot})`;
+
+    gShapes.appendChild(
+      el("path", {
+        d: `M 0 -25
+            C -13 -25 -19 -15 -18 -3
+            C -17 4 -14 8 -10 11
+            L -10 15
+            C -10 20 -6 23 -1 23
+            L 8 23
+            C 12 23 14 19 15 15
+            C 18 11 21 6 19 0
+            C 18 -4 15 -4 14 -8
+            C 17 -13 15 -20 10 -23
+            C 7 -25 3 -25 0 -25
+            Z`,
+        class: cls, transform,
+      })
+    );
+    const socketCls = shapeClass("eye-socket", ["head", "neck"]);
+    gMarks.appendChild(el("circle", { cx: 7, cy: -4, r: 3.2, class: socketCls, transform }));
+    gMarks.appendChild(el("circle", { cx: -12, cy: 0, r: 3.2, class: markCls, transform }));
+    gMarks.appendChild(el("path", { d: "M 15 -2 L 19 1 L 15 4", class: markCls, transform }));
+    gMarks.appendChild(el("line", { x1: 8, y1: 17, x2: 13, y2: 16, class: markCls, transform }));
+  }
+
   function drawClavicle(group, chest, shoulder, side, cls, fillCls) {
     const dx = shoulder.x - chest.x, dy = shoulder.y - chest.y;
     const len = Math.hypot(dx, dy) || 1;
     const ux = -dy / len, uy = dx / len;
-    const bow = 7 * side;
+    const bow = Math.min(7, len * 0.35) * side;
     const c1x = chest.x + dx * 0.3 + ux * bow, c1y = chest.y + dy * 0.3 + uy * bow;
     const c2x = chest.x + dx * 0.7 - ux * bow, c2y = chest.y + dy * 0.7 - uy * bow;
     const d = `M ${chest.x} ${chest.y} C ${c1x} ${c1y} ${c2x} ${c2y} ${shoulder.x} ${shoulder.y}`;
@@ -546,9 +687,15 @@
   }
 
   function drawSkeletonBody(screenPos) {
-    drawPelvis(gShapes, gShapes, screenPos);
-    drawTorso(gShapes, gMarks, screenPos);
-    drawSkull(gShapes, gMarks, screenPos);
+    if (state.view === "lateral") {
+      drawPelvisLateral(gShapes, screenPos);
+      drawTorsoLateral(gShapes, gMarks, screenPos);
+      drawSkullLateral(gShapes, gMarks, screenPos);
+    } else {
+      drawPelvis(gShapes, gShapes, screenPos);
+      drawTorso(gShapes, gMarks, screenPos);
+      drawSkull(gShapes, gMarks, screenPos);
+    }
 
     for (const side of ["L", "R"]) {
       const chest = screenPos.chest;
@@ -943,10 +1090,23 @@
   // Toolbar wiring
   // ---------------------------------------------------------------
   document.getElementById("resetBtn").addEventListener("click", () => {
-    state.joints = freshState();
+    poseByView[state.view] = freshState(state.view);
+    state.joints = poseByView[state.view];
     selectJoint(null);
     render();
   });
+
+  function setView(view) {
+    if (state.view === view) return;
+    state.view = view;
+    state.joints = poseByView[view];
+    document.getElementById("viewAnteriorBtn").classList.toggle("active", view === "anterior");
+    document.getElementById("viewLateralBtn").classList.toggle("active", view === "lateral");
+    selectJoint(null);
+    render();
+  }
+  document.getElementById("viewAnteriorBtn").addEventListener("click", () => setView("anterior"));
+  document.getElementById("viewLateralBtn").addEventListener("click", () => setView("lateral"));
 
   document.getElementById("clearSelectionBtn").addEventListener("click", () => {
     selectJoint(null);
