@@ -15,6 +15,10 @@
       </div>
 
       <div class="topbar-actions">
+        <div class="view-toggle" role="group" aria-label="View">
+          <button class="view-toggle-btn active" id="viewAnteriorBtn" type="button">Anterior</button>
+          <button class="view-toggle-btn" id="viewLateralBtn" type="button">Lateral</button>
+        </div>
         <label class="mass-input">
           <span>Mass</span>
           <input type="number" id="bodyMassInput" value="70" min="20" max="200" step="1" />
@@ -53,6 +57,7 @@
             <li><span>Drag</span> a joint to rotate the bone around it</li>
             <li><span>Click</span> a joint to isolate &amp; inspect it</li>
             <li><span>Click</span> empty space to clear selection</li>
+            <li><span>Anterior / Lateral</span> switches between a front and a side view, each posed independently</li>
           </ul>
         </div>
 
