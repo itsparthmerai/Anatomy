@@ -1,270 +1,113 @@
 (() => {
   "use strict";
 
+  const VBW = 480, VBH = 640;
+  const ROOT = { x: 240, y: 300 };
+
   // ---------------------------------------------------------------
-  // Skeleton model: a hierarchy of bones, each ending at a named
-  // joint. A bone's direction is cos(angle)*restDir + sin(angle)*
-  // bendAxis, both fixed unit vectors in world space: angle = 0 is
-  // always anatomical neutral (restDir), positive angle sweeps the
-  // bone toward bendAxis (flexion), negative sweeps it the other way
-  // (extension past neutral). Positions chain from the fixed pelvis
-  // root through each bone's own length and direction (no rotation
-  // composition — every bone's angle is independent, so dragging one
-  // joint bends only the bone that ends there, exactly like the
-  // original 2D rig).
+  // Skeleton model: each joint is the END of a bone that starts at
+  // its parent's current position. Angles are absolute (world-space,
+  // atan2 convention: 0deg = +x/right, 90deg = +y/down, -90deg = up).
+  // "draggable" joints can be rotated by the user; anchor joints
+  // (shoulders/hips) are fixed offsets from the torso but still show
+  // an angle readout. "angleChild" names the next joint down the
+  // chain used to compute the flexion angle shown at this joint.
   // ---------------------------------------------------------------
-  function cross3(a, b) {
-    return [
-      a[1] * b[2] - a[2] * b[1],
-      a[2] * b[0] - a[0] * b[2],
-      a[0] * b[1] - a[1] * b[0],
-    ];
-  }
+  const BLUEPRINT = {
+    pelvis:   { parent: null,      length: 0,   angle: 0,    draggable: "translate", label: "Pelvis" },
+    chest:    { parent: "pelvis",  length: 90,  angle: -90,  draggable: true,  label: "Spine",       angleChild: "neck",   thickness: 13 },
+    neck:     { parent: "chest",   length: 26,  angle: -90,  draggable: true,  label: "Neck",        angleChild: "head",   thickness: 8 },
+    head:     { parent: "neck",    length: 34,  angle: -90,  draggable: true,  label: "Head",        thickness: 8, skull: true },
 
-  const RAW_BONES = {
-    pelvis: { parent: null, length: 0, thickness: 20, label: "Pelvis" },
+    shoulderL:{ parent: "chest",   length: 46,  angle: 180,  draggable: false, label: "Shoulder (L)", angleChild: "elbowL", thickness: 7 },
+    shoulderR:{ parent: "chest",   length: 46,  angle: 0,    draggable: false, label: "Shoulder (R)", angleChild: "elbowR", thickness: 7 },
+    hipL:     { parent: "pelvis",  length: 32,  angle: 180,  draggable: false, label: "Hip (L)",      angleChild: "kneeL",  thickness: 7 },
+    hipR:     { parent: "pelvis",  length: 32,  angle: 0,    draggable: false, label: "Hip (R)",      angleChild: "kneeR",  thickness: 7 },
 
-    chest: {
-      parent: "pelvis", length: 90, thickness: 13, label: "Spine",
-      angleChild: "neck", restDir: [0, 1, 0], bendAxis: [0, 0, 1],
-      angle: 0, angleMin: -40, angleMax: 100,
-      romMin: -25, romMax: 80, romLabel: "Trunk flexion / extension",
-      draggable: true, massFrac: 0.477, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.52, bioLabel: "Trunk",
-    },
-    neck: {
-      parent: "chest", length: 26, thickness: 8, label: "Neck",
-      angleChild: "head", restDir: [0, 1, 0], bendAxis: [0, 0, 1],
-      angle: 0, angleMin: -60, angleMax: 65,
-      romMin: -45, romMax: 50, romLabel: "Neck flexion / extension",
-      draggable: true, massFrac: 0.020, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.12, bioLabel: "Neck",
-    },
-    head: {
-      parent: "neck", length: 34, thickness: 17, label: "Head", skull: true,
-      restDir: [0, 1, 0], bendAxis: [0, 0, 1],
-      angle: 0, angleMin: -55, angleMax: 60,
-      draggable: true, massFrac: 0.081, comFrac: 0.55, radGyrFrac: 0.495, lengthM: 0.24, bioLabel: "Head",
-    },
+    elbowL:   { parent: "shoulderL", length: 84, angle: 100, draggable: true, label: "Elbow (L)", angleChild: "wristL", thickness: 11 },
+    wristL:   { parent: "elbowL",    length: 74, angle: 100, draggable: true, label: "Wrist (L)", angleChild: "handL",  thickness: 9 },
+    handL:    { parent: "wristL",    length: 26, angle: 100, draggable: true, label: "Hand (L)",  thickness: 7 },
 
-    shoulderL: {
-      parent: "chest", length: 46, thickness: 6, label: "Shoulder (L)",
-      angleChild: "elbowL", restDir: [-1, 0, 0], bendAxis: [0, 0, 1], angle: 0,
-      romMin: -50, romMax: 180, romLabel: "Shoulder flexion / extension",
-      draggable: false, massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.16, bioLabel: "Clavicle (L)",
-    },
-    shoulderR: {
-      parent: "chest", length: 46, thickness: 6, label: "Shoulder (R)",
-      angleChild: "elbowR", restDir: [1, 0, 0], bendAxis: [0, 0, 1], angle: 0,
-      romMin: -50, romMax: 180, romLabel: "Shoulder flexion / extension",
-      draggable: false, massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.16, bioLabel: "Clavicle (R)",
-    },
-    hipL: {
-      parent: "pelvis", length: 32, thickness: 8, label: "Hip (L)",
-      angleChild: "kneeL", restDir: [-1, 0, 0], bendAxis: [0, 0, 1], angle: 0,
-      romMin: -20, romMax: 120, romLabel: "Hip flexion / extension",
-      draggable: false, massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.13, bioLabel: "Pelvic girdle (L)",
-    },
-    hipR: {
-      parent: "pelvis", length: 32, thickness: 8, label: "Hip (R)",
-      angleChild: "kneeR", restDir: [1, 0, 0], bendAxis: [0, 0, 1], angle: 0,
-      romMin: -20, romMax: 120, romLabel: "Hip flexion / extension",
-      draggable: false, massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.13, bioLabel: "Pelvic girdle (R)",
-    },
+    elbowR:   { parent: "shoulderR", length: 84, angle: 80,  draggable: true, label: "Elbow (R)", angleChild: "wristR", thickness: 11 },
+    wristR:   { parent: "elbowR",    length: 74, angle: 80,  draggable: true, label: "Wrist (R)", angleChild: "handR",  thickness: 9 },
+    handR:    { parent: "wristR",    length: 26, angle: 80,  draggable: true, label: "Hand (R)",  thickness: 7 },
 
-    elbowL: {
-      parent: "shoulderL", length: 84, thickness: 11, label: "Elbow (L)",
-      angleChild: "wristL", restDir: [0, -1, 0], bendAxis: [0, 0, 1],
-      angle: 0, angleMin: -60, angleMax: 190,
-      romMin: 0, romMax: 150, romLabel: "Elbow flexion",
-      draggable: true, massFrac: 0.028, comFrac: 0.436, radGyrFrac: 0.322, lengthM: 0.29, bioLabel: "Upper arm (L)",
-    },
-    elbowR: {
-      parent: "shoulderR", length: 84, thickness: 11, label: "Elbow (R)",
-      angleChild: "wristR", restDir: [0, -1, 0], bendAxis: [0, 0, 1],
-      angle: 0, angleMin: -60, angleMax: 190,
-      romMin: 0, romMax: 150, romLabel: "Elbow flexion",
-      draggable: true, massFrac: 0.028, comFrac: 0.436, radGyrFrac: 0.322, lengthM: 0.29, bioLabel: "Upper arm (R)",
-    },
-    wristL: {
-      parent: "elbowL", length: 74, thickness: 9, label: "Wrist (L)",
-      angleChild: "handL", restDir: [0, -1, 0], bendAxis: [0, 0, 1],
-      angle: 15, angleMin: -15, angleMax: 165,
-      romMin: -70, romMax: 80, romLabel: "Wrist flexion / extension",
-      draggable: true, massFrac: 0.016, comFrac: 0.430, radGyrFrac: 0.303, lengthM: 0.26, bioLabel: "Forearm (L)",
-    },
-    wristR: {
-      parent: "elbowR", length: 74, thickness: 9, label: "Wrist (R)",
-      angleChild: "handR", restDir: [0, -1, 0], bendAxis: [0, 0, 1],
-      angle: 15, angleMin: -15, angleMax: 165,
-      romMin: -70, romMax: 80, romLabel: "Wrist flexion / extension",
-      draggable: true, massFrac: 0.016, comFrac: 0.430, radGyrFrac: 0.303, lengthM: 0.26, bioLabel: "Forearm (R)",
-    },
-    handL: {
-      parent: "wristL", length: 26, thickness: 7, label: "Hand (L)",
-      restDir: [0, -1, 0], bendAxis: [0, 0, 1], angle: 0, angleMin: -80, angleMax: 90,
-      draggable: true, massFrac: 0.006, comFrac: 0.506, radGyrFrac: 0.297, lengthM: 0.19, bioLabel: "Hand (L)",
-    },
-    handR: {
-      parent: "wristR", length: 26, thickness: 7, label: "Hand (R)",
-      restDir: [0, -1, 0], bendAxis: [0, 0, 1], angle: 0, angleMin: -80, angleMax: 90,
-      draggable: true, massFrac: 0.006, comFrac: 0.506, radGyrFrac: 0.297, lengthM: 0.19, bioLabel: "Hand (R)",
-    },
+    kneeL:    { parent: "hipL",   length: 108, angle: 95,  draggable: true, label: "Knee (L)",  angleChild: "ankleL", thickness: 13 },
+    ankleL:   { parent: "kneeL",  length: 98,  angle: 90,  draggable: true, label: "Ankle (L)", angleChild: "footL",  thickness: 10 },
+    footL:    { parent: "ankleL", length: 32,  angle: 165, draggable: true, label: "Foot (L)",  thickness: 8 },
 
-    kneeL: {
-      parent: "hipL", length: 108, thickness: 13, label: "Knee (L)",
-      angleChild: "ankleL", restDir: [0, -1, 0], bendAxis: [0, 0, 1],
-      angle: 0, angleMin: -35, angleMax: 130,
-      romMin: -10, romMax: 135, romLabel: "Knee flexion",
-      draggable: true, massFrac: 0.100, comFrac: 0.433, radGyrFrac: 0.323, lengthM: 0.42, bioLabel: "Thigh (L)",
-    },
-    kneeR: {
-      parent: "hipR", length: 108, thickness: 13, label: "Knee (R)",
-      angleChild: "ankleR", restDir: [0, -1, 0], bendAxis: [0, 0, 1],
-      angle: 0, angleMin: -35, angleMax: 130,
-      romMin: -10, romMax: 135, romLabel: "Knee flexion",
-      draggable: true, massFrac: 0.100, comFrac: 0.433, radGyrFrac: 0.323, lengthM: 0.42, bioLabel: "Thigh (R)",
-    },
-    ankleL: {
-      parent: "kneeL", length: 98, thickness: 10, label: "Ankle (L)",
-      angleChild: "footL", restDir: [0, -1, 0], bendAxis: [0, 0, -1],
-      angle: 5, angleMin: -20, angleMax: 145,
-      romMin: -50, romMax: 20, romLabel: "Ankle dorsi / plantarflexion",
-      draggable: true, massFrac: 0.0465, comFrac: 0.433, radGyrFrac: 0.302, lengthM: 0.43, bioLabel: "Shank (L)",
-    },
-    ankleR: {
-      parent: "kneeR", length: 98, thickness: 10, label: "Ankle (R)",
-      angleChild: "footR", restDir: [0, -1, 0], bendAxis: [0, 0, -1],
-      angle: 5, angleMin: -20, angleMax: 145,
-      romMin: -50, romMax: 20, romLabel: "Ankle dorsi / plantarflexion",
-      draggable: true, massFrac: 0.0465, comFrac: 0.433, radGyrFrac: 0.302, lengthM: 0.43, bioLabel: "Shank (R)",
-    },
-    footL: {
-      parent: "ankleL", length: 32, thickness: 8, label: "Foot (L)",
-      restDir: [0, 0, 1], bendAxis: [0, 1, 0], angle: 0, angleMin: -60, angleMax: 30,
-      draggable: true, massFrac: 0.0145, comFrac: 0.50, radGyrFrac: 0.475, lengthM: 0.26, bioLabel: "Foot (L)",
-    },
-    footR: {
-      parent: "ankleR", length: 32, thickness: 8, label: "Foot (R)",
-      restDir: [0, 0, 1], bendAxis: [0, 1, 0], angle: 0, angleMin: -60, angleMax: 30,
-      draggable: true, massFrac: 0.0145, comFrac: 0.50, radGyrFrac: 0.475, lengthM: 0.26, bioLabel: "Foot (R)",
-    },
+    kneeR:    { parent: "hipR",   length: 108, angle: 85,  draggable: true, label: "Knee (R)",  angleChild: "ankleR", thickness: 13 },
+    ankleR:   { parent: "kneeR",  length: 98,  angle: 90,  draggable: true, label: "Ankle (R)", angleChild: "footR",  thickness: 10 },
+    footR:    { parent: "ankleR", length: 32,  angle: 15,  draggable: true, label: "Foot (R)",  thickness: 8 },
   };
 
-  // Precompute each bendable joint's hinge normal, used to sign its
-  // flexion-angle display (positive = flexion, negative = extension).
-  // Derived from the CHILD bone's own bend plane, since it's the
-  // child's rotation toward its own bendAxis that defines "flexion"
-  // at this joint (the parent and child don't always share the same
-  // plane — e.g. the knee's shank bends opposite the thigh's plane).
-  function signedAngleDeg(v1, v2, normal) {
-    const a = new THREE.Vector3(...v1).normalize();
-    const b = new THREE.Vector3(...v2).normalize();
-    const dot = Math.min(1, Math.max(-1, a.dot(b)));
-    const mag = (Math.acos(dot) * 180) / Math.PI;
-    const cross = new THREE.Vector3().crossVectors(a, b);
-    const sign = cross.dot(new THREE.Vector3(...normal)) >= 0 ? 1 : -1;
-    return sign * mag;
-  }
+  const JOINT_ORDER = Object.keys(BLUEPRINT);
 
-  for (const id in RAW_BONES) {
-    const b = RAW_BONES[id];
-    if (b.angleChild) {
-      const child = RAW_BONES[b.angleChild];
-      b.hingeNormal = cross3(child.restDir, child.bendAxis);
-      // Some joint pairs aren't anatomically straight at rest (the
-      // foot sits perpendicular to the shank, not in line with it),
-      // so the raw angle between their two rest directions isn't
-      // zero. Bake that baseline out so 0deg always means "this
-      // joint's own neutral pose", regardless of the pair's geometry.
-      const incomingRest = b.draggable === false ? child.restDir : b.restDir;
-      b.flexOffset = signedAngleDeg(incomingRest, child.restDir, b.hingeNormal);
-    }
-  }
-
-  const BONES = RAW_BONES;
-  const JOINT_ORDER = Object.keys(BONES);
+  // ---------------------------------------------------------------
+  // Anthropometric segment table (Winter, "Biomechanics and Motor
+  // Control of Human Movement" — standard adult segment parameters).
+  // Each isolatable joint maps to the body segment it forms the
+  // proximal or distal end of: massFrac is the segment's mass as a
+  // fraction of total body mass; comFrac is the distance from the
+  // segment's proximal end to its center of mass, as a fraction of
+  // segment length; radGyrFrac is the radius of gyration about the
+  // segment's own center of mass, also as a fraction of length;
+  // lengthM is a representative adult segment length in meters.
+  // ---------------------------------------------------------------
+  const SEGMENTS = {
+    chest:     { proximal: "pelvis", label: "Trunk",     massFrac: 0.477, comFrac: 0.50, radGyrFrac: 0.50,  lengthM: 0.52 },
+    neck:      { proximal: "chest",  label: "Neck",      massFrac: 0.020, comFrac: 0.50, radGyrFrac: 0.50,  lengthM: 0.12 },
+    head:      { proximal: "neck",   label: "Head",      massFrac: 0.081, comFrac: 0.55, radGyrFrac: 0.495, lengthM: 0.24 },
+    shoulderL: { proximal: "chest",  label: "Clavicle (L)", massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.16 },
+    shoulderR: { proximal: "chest",  label: "Clavicle (R)", massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.16 },
+    hipL:      { proximal: "pelvis", label: "Pelvic girdle (L)", massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.13 },
+    hipR:      { proximal: "pelvis", label: "Pelvic girdle (R)", massFrac: 0.005, comFrac: 0.50, radGyrFrac: 0.50, lengthM: 0.13 },
+    elbowL:    { proximal: "shoulderL", label: "Upper arm (L)", massFrac: 0.028, comFrac: 0.436, radGyrFrac: 0.322, lengthM: 0.29 },
+    elbowR:    { proximal: "shoulderR", label: "Upper arm (R)", massFrac: 0.028, comFrac: 0.436, radGyrFrac: 0.322, lengthM: 0.29 },
+    wristL:    { proximal: "elbowL", label: "Forearm (L)", massFrac: 0.016, comFrac: 0.430, radGyrFrac: 0.303, lengthM: 0.26 },
+    wristR:    { proximal: "elbowR", label: "Forearm (R)", massFrac: 0.016, comFrac: 0.430, radGyrFrac: 0.303, lengthM: 0.26 },
+    handL:     { proximal: "wristL", label: "Hand (L)", massFrac: 0.006, comFrac: 0.506, radGyrFrac: 0.297, lengthM: 0.19 },
+    handR:     { proximal: "wristR", label: "Hand (R)", massFrac: 0.006, comFrac: 0.506, radGyrFrac: 0.297, lengthM: 0.19 },
+    kneeL:     { proximal: "hipL", label: "Thigh (L)", massFrac: 0.100, comFrac: 0.433, radGyrFrac: 0.323, lengthM: 0.42 },
+    kneeR:     { proximal: "hipR", label: "Thigh (R)", massFrac: 0.100, comFrac: 0.433, radGyrFrac: 0.323, lengthM: 0.42 },
+    ankleL:    { proximal: "kneeL", label: "Shank (L)", massFrac: 0.0465, comFrac: 0.433, radGyrFrac: 0.302, lengthM: 0.43 },
+    ankleR:    { proximal: "kneeR", label: "Shank (R)", massFrac: 0.0465, comFrac: 0.433, radGyrFrac: 0.302, lengthM: 0.43 },
+    footL:     { proximal: "ankleL", label: "Foot (L)", massFrac: 0.0145, comFrac: 0.50, radGyrFrac: 0.475, lengthM: 0.26 },
+    footR:     { proximal: "ankleR", label: "Foot (R)", massFrac: 0.0145, comFrac: 0.50, radGyrFrac: 0.475, lengthM: 0.26 },
+  };
   const G = 9.81; // m/s^2
 
-  function freshAngles() {
-    const angles = {};
-    for (const id of JOINT_ORDER) angles[id] = BONES[id].angle || 0;
-    return angles;
+  function freshState() {
+    const joints = {};
+    for (const id of JOINT_ORDER) {
+      joints[id] = { ...BLUEPRINT[id] };
+    }
+    joints.pelvis.x = ROOT.x;
+    joints.pelvis.y = ROOT.y;
+    return joints;
   }
 
   const state = {
-    angles: freshAngles(),
+    joints: freshState(),
     selected: null,
+    dragging: null,
     bodyMass: 70,
     bio: { force: false, velocity: false, acceleration: false, moment: false, com: false, grf: false },
     kinetics: { v: 0, a: 0, F: 0, dt: 0.2 },
   };
 
   // ---------------------------------------------------------------
-  // Forward kinematics
-  // ---------------------------------------------------------------
-  function computePositions() {
-    const pos = {};
-    for (const id of JOINT_ORDER) {
-      const b = BONES[id];
-      if (b.parent === null) {
-        pos[id] = new THREE.Vector3(0, 0, 0);
-        continue;
-      }
-      const rad = (state.angles[id] * Math.PI) / 180;
-      const c = Math.cos(rad), s = Math.sin(rad);
-      const dir = new THREE.Vector3(
-        b.restDir[0] * c + b.bendAxis[0] * s,
-        b.restDir[1] * c + b.bendAxis[1] * s,
-        b.restDir[2] * c + b.bendAxis[2] * s
-      );
-      pos[id] = pos[b.parent].clone().addScaledVector(dir, b.length);
-    }
-    return pos;
-  }
-
-  function getFlexionAngle(id, pos) {
-    const b = BONES[id];
-    if (!b.angleChild || !b.parent) return null;
-    // Fixed anchor joints (shoulders/hips) sit at a right angle to the
-    // limb they carry, so comparing their own direction to the limb's
-    // would always read a constant ~90deg regardless of pose. They
-    // contribute no rotation of their own, so treat their "incoming"
-    // reference as the limb's own neutral direction instead — the
-    // displayed flexion then reduces to the limb's own angle, which is
-    // what shoulder/hip flexion actually means clinically.
-    const incoming = b.draggable === false
-      ? new THREE.Vector3(...BONES[b.angleChild].restDir)
-      : pos[id].clone().sub(pos[b.parent]);
-    const outgoing = pos[b.angleChild].clone().sub(pos[id]);
-    if (incoming.lengthSq() < 1e-8 || outgoing.lengthSq() < 1e-8) return 0;
-    incoming.normalize();
-    outgoing.normalize();
-    const dot = Math.min(1, Math.max(-1, incoming.dot(outgoing)));
-    const mag = (Math.acos(dot) * 180) / Math.PI;
-    const cross = new THREE.Vector3().crossVectors(incoming, outgoing);
-    const sign = cross.dot(new THREE.Vector3(...b.hingeNormal)) >= 0 ? 1 : -1;
-    return Math.round(sign * mag - b.flexOffset);
-  }
-
-  function getRomInfo(id, pos) {
-    const b = BONES[id];
-    if (b.romMax === undefined) return null;
-    const flex = getFlexionAngle(id, pos);
-    if (flex === null) return null;
-    return { label: b.romLabel, romMin: b.romMin, romMax: b.romMax, flex, exceeds: flex > b.romMax || flex < b.romMin };
-  }
-
-  // ---------------------------------------------------------------
   // Biomechanics: segment mass/inertia, and the v <-> a <-> F coupling
   // ---------------------------------------------------------------
   function getSegmentInfo(jointId) {
-    const b = jointId ? BONES[jointId] : null;
-    if (!b || b.massFrac === undefined) return null;
-    const m = b.massFrac * state.bodyMass;
-    const r = b.comFrac * b.lengthM;
-    const radGyr = b.radGyrFrac * b.lengthM;
+    const seg = SEGMENTS[jointId];
+    if (!seg) return null;
+    const m = seg.massFrac * state.bodyMass;
+    const r = seg.comFrac * seg.lengthM;
+    const radGyr = seg.radGyrFrac * seg.lengthM;
     const iCom = m * radGyr * radGyr;
     const iJoint = iCom + m * r * r; // parallel axis theorem
-    return { label: b.bioLabel, proximal: b.parent, m, r, iCom, iJoint, comFrac: b.comFrac };
+    return { ...seg, m, r, iCom, iJoint };
   }
 
   function setVelocity(v) {
@@ -296,16 +139,17 @@
   }
 
   function computeBodyCOM(pos) {
-    const sum = new THREE.Vector3();
-    let sumM = 0;
-    for (const id of JOINT_ORDER) {
-      const b = BONES[id];
-      if (b.massFrac === undefined) continue;
-      const com = pos[b.parent].clone().lerp(pos[id], b.comFrac);
-      sum.addScaledVector(com, b.massFrac);
-      sumM += b.massFrac;
+    let sumX = 0, sumY = 0, sumM = 0;
+    for (const [jointId, seg] of Object.entries(SEGMENTS)) {
+      const proximal = pos[seg.proximal];
+      const distal = pos[jointId];
+      const comX = proximal.x + (distal.x - proximal.x) * seg.comFrac;
+      const comY = proximal.y + (distal.y - proximal.y) * seg.comFrac;
+      sumX += comX * seg.massFrac;
+      sumY += comY * seg.massFrac;
+      sumM += seg.massFrac;
     }
-    return sum.divideScalar(sumM);
+    return { x: sumX / sumM, y: sumY / sumM };
   }
 
   function computeGRF() {
@@ -320,281 +164,133 @@
   }
 
   // ---------------------------------------------------------------
-  // Three.js scene setup
+  // Forward kinematics
   // ---------------------------------------------------------------
-  const canvas = document.getElementById("glCanvas");
-  const wrap = document.querySelector(".canvas-wrap");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-
-  const scene = new THREE.Scene();
-
-  const camera = new THREE.PerspectiveCamera(38, 1, 1, 3000);
-  camera.position.set(110, 60, 560);
-
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.target.set(0, -30, 0);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.minDistance = 150;
-  controls.maxDistance = 1000;
-  controls.update();
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-  const key = new THREE.DirectionalLight(0xffffff, 0.75);
-  key.position.set(150, 260, 200);
-  scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.35);
-  fill.position.set(-200, 80, -150);
-  scene.add(fill);
-
-  const grid = new THREE.GridHelper(600, 24, 0xd8d3c6, 0xe7e3d8);
-  grid.position.y = -206;
-  scene.add(grid);
-
-  const BONE_COLOR = 0xf3f0e6;
-  const HIGHLIGHT_COLOR = 0x7c5cf0;
-  const DIM_COLOR = 0xdedad0;
-  const SELECTED_COLOR = 0x7c5cf0;
-
-  const boneGroup = new THREE.Group();
-  scene.add(boneGroup);
-
-  const bonesById = {}; // jointId -> { shaft: Mesh, cap: Mesh, material }
-  const pickables = []; // Mesh[] for raycasting, userData.jointId set
-
-  function makeMaterial() {
-    return new THREE.MeshStandardMaterial({ color: BONE_COLOR, roughness: 0.65, metalness: 0.04 });
+  function computePositions() {
+    const pos = {};
+    for (const id of JOINT_ORDER) {
+      const j = state.joints[id];
+      if (j.parent === null) {
+        pos[id] = { x: j.x, y: j.y };
+      } else {
+        const p = pos[j.parent];
+        const rad = (j.angle * Math.PI) / 180;
+        pos[id] = { x: p.x + j.length * Math.cos(rad), y: p.y + j.length * Math.sin(rad) };
+      }
+    }
+    return pos;
   }
 
-  for (const id of JOINT_ORDER) {
-    const b = BONES[id];
-    const radius = Math.max(2.5, b.thickness / 2);
+  function jointFlexion(aVec, bVec) {
+    const a1 = Math.atan2(aVec.y, aVec.x);
+    const a2 = Math.atan2(bVec.y, bVec.x);
+    let diff = a2 - a1;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    const turn = Math.abs(diff) * (180 / Math.PI);
+    return Math.round(180 - turn);
+  }
 
-    if (b.parent !== null) {
-      const material = makeMaterial();
-      const height = b.length;
-      const shaftGeom = new THREE.CylinderGeometry(radius, radius, height, 14, 1, false);
-      const shaft = new THREE.Mesh(shaftGeom, material);
-      boneGroup.add(shaft);
-      bonesById[id] = { shaft, material, radius };
-    }
-
-    // joint sphere (visible marker at the distal end of this bone, or
-    // the pelvis root) — also used for the skull, drawn oversized.
-    const jointRadius = b.skull ? 17 : Math.max(3, radius * 0.85);
-    const jointGeom = new THREE.SphereGeometry(jointRadius, 20, 16);
-    const jointMat = makeMaterial();
-    const jointMesh = new THREE.Mesh(jointGeom, jointMat);
-    boneGroup.add(jointMesh);
-    if (!bonesById[id]) bonesById[id] = {};
-    bonesById[id].joint = jointMesh;
-    bonesById[id].jointMat = jointMat;
-
-    // pick handle: an invisible, generously sized sphere for raycasting
-    const pickGeom = new THREE.SphereGeometry(Math.max(10, jointRadius + 4), 10, 8);
-    const pickMat = new THREE.MeshBasicMaterial({ visible: false });
-    const pickMesh = new THREE.Mesh(pickGeom, pickMat);
-    pickMesh.userData.jointId = id;
-    boneGroup.add(pickMesh);
-    pickables.push(pickMesh);
-    bonesById[id].pick = pickMesh;
+  function getFlexionAngle(id, pos) {
+    const j = state.joints[id];
+    if (!j.angleChild || !j.parent) return null;
+    const incoming = { x: pos[id].x - pos[j.parent].x, y: pos[id].y - pos[j.parent].y };
+    const childId = j.angleChild;
+    const outgoing = { x: pos[childId].x - pos[id].x, y: pos[childId].y - pos[id].y };
+    return jointFlexion(incoming, outgoing);
   }
 
   // ---------------------------------------------------------------
-  // Biomechanics markers (arrows, moment ring, COM crosshair)
+  // Range of motion: typical adult normal ranges (goniometry
+  // references, degrees of flexion from anatomical zero). Our own
+  // flexion angle is 180 = fully extended, 0 = fully folded, so it
+  // converts to "degrees of flexion" as flex = 180 - angle. That
+  // scale can't go negative, so this model has no way to represent
+  // hyperextension past neutral -- flagged in the UI copy rather
+  // than silently ignored.
   // ---------------------------------------------------------------
-  const bioGroup = new THREE.Group();
-  scene.add(bioGroup);
+  const ROM_RANGES = {
+    chest:     { label: "Trunk flexion", max: 80 },
+    neck:      { label: "Neck flexion", max: 50 },
+    shoulderL: { label: "Shoulder flexion", max: 180 },
+    shoulderR: { label: "Shoulder flexion", max: 180 },
+    elbowL:    { label: "Elbow flexion", max: 150 },
+    elbowR:    { label: "Elbow flexion", max: 150 },
+    wristL:    { label: "Wrist flexion", max: 80 },
+    wristR:    { label: "Wrist flexion", max: 80 },
+    hipL:      { label: "Hip flexion", max: 120 },
+    hipR:      { label: "Hip flexion", max: 120 },
+    kneeL:     { label: "Knee flexion", max: 135 },
+    kneeR:     { label: "Knee flexion", max: 135 },
+    ankleL:    { label: "Ankle flexion (dorsi + plantar)", max: 70 },
+    ankleR:    { label: "Ankle flexion (dorsi + plantar)", max: 70 },
+  };
 
-  function clearGroup(group) {
-    while (group.children.length) {
-      const child = group.children.pop();
-      child.geometry && child.geometry.dispose();
-      child.material && child.material.dispose();
-    }
-  }
-
-  function addArrow(origin, dir, length, color, label) {
-    if (length < 4) return;
-    const arrow = new THREE.ArrowHelper(dir.clone().normalize(), origin, length, color, Math.min(14, length * 0.3), Math.min(8, length * 0.2));
-    bioGroup.add(arrow);
-    addLabel(origin.clone().addScaledVector(dir.clone().normalize(), length + 10), label, `#${color.toString(16).padStart(6, "0")}`);
-  }
-
-  const labelEls = [];
-  function addLabel(worldPos, text, color) {
-    const div = document.createElement("div");
-    div.className = "gl-label";
-    div.style.color = color;
-    div.textContent = text;
-    wrap.appendChild(div);
-    labelEls.push({ el: div, pos: worldPos.clone() });
-  }
-  function clearLabels() {
-    for (const l of labelEls) l.el.remove();
-    labelEls.length = 0;
-  }
-  function updateLabelPositions() {
-    const rect = canvas.getBoundingClientRect();
-    for (const l of labelEls) {
-      const p = l.pos.clone().project(camera);
-      const x = (p.x * 0.5 + 0.5) * rect.width;
-      const y = (-p.y * 0.5 + 0.5) * rect.height;
-      const visible = p.z < 1;
-      l.el.style.display = visible ? "block" : "none";
-      l.el.style.transform = `translate(${x}px, ${y}px)`;
-    }
-  }
-
-  function drawMomentRing(center, info, boneDir) {
-    const alpha = info.r > 0 ? state.kinetics.a / info.r : 0;
-    const M = info.iJoint * alpha;
-    if (Math.abs(M) < 0.05) return;
-
-    const radius = 26;
-    const sweep = Math.min((30 + Math.abs(M) * 6) * (Math.PI / 180), 260 * (Math.PI / 180));
-    const dir = M >= 0 ? 1 : -1;
-    const up = boneDir.clone().normalize();
-    let ref = new THREE.Vector3(1, 0, 0);
-    if (Math.abs(up.dot(ref)) > 0.9) ref = new THREE.Vector3(0, 0, 1);
-    const e1 = ref.clone().sub(up.clone().multiplyScalar(ref.dot(up))).normalize();
-    const e2 = new THREE.Vector3().crossVectors(up, e1);
-
-    const points = [];
-    const segments = 24;
-    for (let i = 0; i <= segments; i++) {
-      const t = (i / segments) * sweep * dir;
-      const p = center.clone()
-        .addScaledVector(e1, Math.cos(t) * radius)
-        .addScaledVector(e2, Math.sin(t) * radius);
-      points.push(p);
-    }
-    const geom = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color: 0xb5852f, linewidth: 2 });
-    bioGroup.add(new THREE.Line(geom, mat));
-    addLabel(points[points.length - 1], `M ${M.toFixed(1)} N·m`, "#b5852f");
-  }
-
-  function drawComMarker(pos) {
-    const com = computeBodyCOM(pos);
-    const geom = new THREE.SphereGeometry(6, 16, 12);
-    const mat = new THREE.MeshBasicMaterial({ color: 0x14b8a6, wireframe: true });
-    const mesh = new THREE.Mesh(geom, mat);
-    mesh.position.copy(com);
-    bioGroup.add(mesh);
-    addLabel(com.clone().add(new THREE.Vector3(0, 12, 0)), "COM", "#14b8a6");
-  }
-
-  function drawGrfArrow(pos) {
-    const feet = [pos.footL, pos.footR];
-    const base = feet[0].clone().add(feet[1]).multiplyScalar(0.5);
-    base.y = Math.min(feet[0].y, feet[1].y);
-    const grf = computeGRF();
-    const pxPerN = 0.16;
-    const len = Math.min(Math.abs(grf) * pxPerN, 110);
-    addArrow(base, new THREE.Vector3(0, 1, 0), len, 0x7c5cf0, `GRF ${grf.toFixed(0)} N`);
-  }
-
-  function drawBiomechanics(pos) {
-    clearGroup(bioGroup);
-    clearLabels();
-
-    if (state.bio.com) drawComMarker(pos);
-    if (!state.selected) return;
-
-    const info = getSegmentInfo(state.selected);
-    if (!info) return;
-
-    if (state.bio.grf) drawGrfArrow(pos);
-
-    const jointPos = pos[state.selected];
-    const proxPos = pos[info.proximal];
-    const boneVec = jointPos.clone().sub(proxPos);
-    const boneLen = boneVec.length() || 1;
-    const boneDir = boneVec.clone().divideScalar(boneLen);
-    // an arbitrary consistent tangent, perpendicular to the bone, used
-    // to draw velocity/accel/force off to the side of the limb
-    let tangent = new THREE.Vector3(1, 0, 0).sub(boneDir.clone().multiplyScalar(boneDir.x));
-    if (tangent.lengthSq() < 1e-6) tangent = new THREE.Vector3(0, 0, 1);
-    tangent.normalize();
-    const com = proxPos.clone().lerp(jointPos, info.comFrac);
-
-    if (state.bio.velocity) {
-      const v = state.kinetics.v;
-      addArrow(com.clone().addScaledVector(boneDir, -10), tangent.clone().multiplyScalar(Math.sign(v) || 1), Math.min(Math.abs(v) * 14, 80), 0x2f7de1, `v ${v.toFixed(1)} m/s`);
-    }
-    if (state.bio.acceleration) {
-      const a = state.kinetics.a;
-      addArrow(com, tangent.clone().multiplyScalar(Math.sign(a) || 1), Math.min(Math.abs(a) * 4, 80), 0x2ea86f, `a ${a.toFixed(1)} m/s²`);
-    }
-    if (state.bio.force) {
-      const F = state.kinetics.F;
-      addArrow(com.clone().addScaledVector(boneDir, 10), tangent.clone().multiplyScalar(Math.sign(F) || 1), Math.min(Math.abs(F) * 0.4, 80), 0xe2583e, `F ${F.toFixed(1)} N`);
-    }
-    if (state.bio.moment) {
-      drawMomentRing(proxPos, info, boneDir);
-    }
+  function getRomInfo(jointId, pos) {
+    const rom = ROM_RANGES[jointId];
+    if (!rom) return null;
+    const angle = getFlexionAngle(jointId, pos);
+    if (angle === null) return null;
+    const flex = 180 - angle;
+    return { ...rom, flex, exceeds: flex > rom.max };
   }
 
   // ---------------------------------------------------------------
-  // Rendering
+  // SVG helpers
   // ---------------------------------------------------------------
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById("skeletonSvg");
+  const gShapes = document.getElementById("shapesGroup");
+  const gBones = document.getElementById("bonesGroup");
+  const gMarks = document.getElementById("marksGroup");
+  const gBio = document.getElementById("bioGroup");
+  const gJoints = document.getElementById("jointsGroup");
+  const gLabels = document.getElementById("labelsGroup");
+
+  function el(tag, attrs) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) node.setAttribute(k, attrs[k]);
+    return node;
+  }
+
+  function clear(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
   function isRelated(id) {
-    if (!state.selected) return true;
+    if (!state.selected) return true; // nothing isolated -> nothing dimmed
     if (id === state.selected) return true;
-    const sel = BONES[state.selected];
+    const sel = state.joints[state.selected];
     if (sel.parent === id) return true;
     if (sel.angleChild === id) return true;
     return false;
   }
 
-  function colorFor(id) {
-    if (!state.selected) return BONE_COLOR;
-    return isRelated(id) ? HIGHLIGHT_COLOR : DIM_COLOR;
-  }
-
-  function applyBoneTransform(mesh, from, to, radius) {
-    const mid = from.clone().add(to).multiplyScalar(0.5);
-    const dir = to.clone().sub(from);
-    const len = dir.length() || 1;
-    mesh.position.copy(mid);
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
-    mesh.scale.set(1, len / (mesh.geometry.parameters.height || len), 1);
-  }
-
+  // ---------------------------------------------------------------
+  // Rendering
+  // ---------------------------------------------------------------
   function render() {
     const pos = computePositions();
+    const screenPos = pos;
 
-    for (const id of JOINT_ORDER) {
-      const b = BONES[id];
-      const entry = bonesById[id];
-      const color = colorFor(id);
-      const opacity = state.selected && !isRelated(id) ? 0.3 : 1;
+    clear(gShapes);
+    clear(gBones);
+    clear(gMarks);
+    clear(gBio);
+    clear(gJoints);
+    clear(gLabels);
 
-      if (b.parent !== null) {
-        applyBoneTransform(entry.shaft, pos[b.parent], pos[id], entry.radius);
-        entry.material.color.setHex(color);
-        entry.material.transparent = opacity < 1;
-        entry.material.opacity = opacity;
-      }
+    drawSkeletonBody(screenPos);
+    drawBiomechanics(screenPos, pos);
+    drawJoints(screenPos, pos);
 
-      entry.joint.position.copy(pos[id]);
-      const jointRelated = isRelated(id) || (BONES[id].angleChild && isRelated(BONES[id].angleChild));
-      entry.jointMat.color.setHex(state.selected === id ? SELECTED_COLOR : color);
-      entry.jointMat.transparent = state.selected && !jointRelated && state.selected !== id;
-      entry.jointMat.opacity = entry.jointMat.transparent ? 0.3 : 1;
-
-      entry.pick.position.copy(pos[id]);
-    }
-
-    drawBiomechanics(pos);
     renderSidePanel(pos);
     updateRomPanel(pos);
     updateBioPanel(pos);
     syncMassInputs();
   }
 
+  // both the toolbar and the empty-state panel expose a body-mass
+  // field; keep whichever one isn't currently being typed into in sync
   function syncMassInputs() {
     MASS_INPUT_IDS.forEach((id) => {
       const input = document.getElementById(id);
@@ -602,7 +298,453 @@
     });
   }
 
-  function renderSidePanel(pos) {
+  // -- isolation helpers for shape rendering -----------------------
+  function relatedIds() {
+    if (!state.selected) return null;
+    const sel = state.joints[state.selected];
+    return new Set([state.selected, sel.parent, sel.angleChild].filter(Boolean));
+  }
+
+  function shapeClass(base, ids) {
+    const rs = relatedIds();
+    if (!rs) return base;
+    const hit = ids.some((id) => rs.has(id));
+    return `${base} ${hit ? "related" : "dimmed"}`;
+  }
+
+  function screenAngle(a, b) {
+    return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+  }
+
+  // -- long-bone silhouette (shaft with flared, rounded ends) ------
+  function longBonePath(L, hs, he, flare) {
+    const f = Math.max(4, Math.min(flare, L / 2 - 2));
+    return [
+      `M 0 ${-he}`,
+      `C ${he * 0.6} ${-he} ${f * 0.5} ${-hs} ${f} ${-hs}`,
+      `L ${L - f} ${-hs}`,
+      `C ${L - f * 0.5} ${-hs} ${L - he * 0.6} ${-he} ${L} ${-he}`,
+      `C ${L + he * 0.9} ${-he * 0.3} ${L + he * 0.9} ${he * 0.3} ${L} ${he}`,
+      `C ${L - he * 0.6} ${he} ${L - f * 0.5} ${hs} ${L - f} ${hs}`,
+      `L ${f} ${hs}`,
+      `C ${f * 0.5} ${hs} ${he * 0.6} ${he} 0 ${he}`,
+      `C ${-he * 0.9} ${he * 0.3} ${-he * 0.9} ${-he * 0.3} 0 ${-he}`,
+      "Z",
+    ].join(" ");
+  }
+
+  function drawLongBone(group, a, b, hs, he, flare, offset, cls, seamCls) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const L = Math.hypot(dx, dy) || 1;
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const nx = -dy / L, ny = dx / L;
+    const ox = a.x + nx * offset, oy = a.y + ny * offset;
+    const transform = `translate(${ox} ${oy}) rotate(${angleDeg})`;
+    group.appendChild(
+      el("path", { d: longBonePath(L, hs, he, flare), class: cls, transform })
+    );
+    if (seamCls) {
+      const f = Math.max(4, Math.min(flare, L / 2 - 2));
+      group.appendChild(
+        el("line", { x1: f * 1.3, y1: 0, x2: L - f * 1.3, y2: 0, class: seamCls, transform })
+      );
+    }
+  }
+
+  // -- pelvis: iliac wings flaring from a narrower hip/pubic waist --
+  function drawPelvis(group, holeGroup, screenPos) {
+    const pel = screenPos.pelvis, hl = screenPos.hipL, hr = screenPos.hipR;
+    const cls = shapeClass("torso-shape", ["pelvis"]);
+    const holeCls = shapeClass("bone-hole", ["pelvis"]);
+    const topY = pel.y - 22, waistY = pel.y + 2, botY = pel.y + 24;
+    const d = `
+      M ${pel.x} ${topY - 10}
+      C ${hl.x + 6} ${topY - 14} ${hl.x - 10} ${topY - 2} ${hl.x - 8} ${topY + 8}
+      C ${hl.x - 6} ${topY + 18} ${hl.x + 4} ${waistY - 4} ${hl.x + 10} ${waistY + 6}
+      C ${pel.x - 16} ${botY - 8} ${pel.x - 10} ${botY + 12} ${pel.x} ${botY + 6}
+      C ${pel.x + 10} ${botY + 12} ${pel.x + 16} ${botY - 8} ${hr.x - 10} ${waistY + 6}
+      C ${hr.x - 4} ${waistY - 4} ${hr.x + 6} ${topY + 18} ${hr.x + 8} ${topY + 8}
+      C ${hr.x + 10} ${topY - 2} ${hr.x - 6} ${topY - 14} ${pel.x} ${topY - 10}
+      Z`;
+    group.appendChild(el("path", { d, class: cls }));
+
+    // obturator foramina: the two characteristic openings in the pubic arch
+    for (const side of [-1, 1]) {
+      const ox = pel.x + side * (hl.x - pel.x) * 0.42;
+      const oy = waistY + 16;
+      holeGroup.appendChild(
+        el("ellipse", { cx: ox, cy: oy, rx: 8, ry: 12, class: holeCls })
+      );
+    }
+  }
+
+  // -- vertebral column: a stack of small bodies along a segment ----
+  function drawVertebrae(group, from, to, count, wStart, wEnd, cls) {
+    const ang = screenAngle(from, to) + 90;
+    for (let i = 0; i < count; i++) {
+      const t = (i + 0.5) / count;
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t;
+      const w = wStart + (wEnd - wStart) * t;
+      const transform = `translate(${x} ${y}) rotate(${ang})`;
+      group.appendChild(
+        el("rect", { x: -w / 2, y: -4, width: w, height: 8, rx: 2.5, class: cls, transform })
+      );
+    }
+  }
+
+  // -- ribcage, sternum, costal cartilage, spine column -------------
+  function drawTorso(gShapes, gMarks, screenPos) {
+    const chest = screenPos.chest, pelvis = screenPos.pelvis;
+    const rot = screenAngle(pelvis, chest) + 90;
+    const len = Math.hypot(chest.x - pelvis.x, chest.y - pelvis.y);
+    const midX = (chest.x + pelvis.x) / 2;
+    const midY = (chest.y + pelvis.y) / 2 - len * 0.08;
+    const cls = shapeClass("torso-shape", ["chest", "pelvis"]);
+    const markCls = shapeClass("detail-mark", ["chest", "pelvis"]);
+    const cartCls = shapeClass("cartilage-mark", ["chest", "pelvis"]);
+
+    const rib = el("ellipse", {
+      cx: midX, cy: midY, rx: 50, ry: 56,
+      class: cls, transform: `rotate(${rot} ${midX} ${midY})`,
+    });
+    gShapes.appendChild(rib);
+
+    const ribCount = 7;
+    for (let i = 0; i < ribCount; i++) {
+      const dy = -38 + i * 12.5;
+      const rx = 43 - Math.abs(dy) * 0.15;
+      gMarks.appendChild(
+        el("path", {
+          d: `M ${midX - rx} ${midY + dy} A ${rx} 9 0 0 0 ${midX + rx} ${midY + dy}`,
+          class: markCls,
+          transform: `rotate(${rot} ${midX} ${midY})`,
+        })
+      );
+      // costal cartilage: connects the front of each rib to the sternum
+      if (i > 0) {
+        gMarks.appendChild(
+          el("path", {
+            d: `M ${midX - rx * 0.55} ${midY + dy - 3} Q ${midX - 6} ${midY + dy + 4} ${midX - 5} ${midY + dy + 10}`,
+            class: cartCls,
+            transform: `rotate(${rot} ${midX} ${midY})`,
+          })
+        );
+        gMarks.appendChild(
+          el("path", {
+            d: `M ${midX + rx * 0.55} ${midY + dy - 3} Q ${midX + 6} ${midY + dy + 4} ${midX + 5} ${midY + dy + 10}`,
+            class: cartCls,
+            transform: `rotate(${rot} ${midX} ${midY})`,
+          })
+        );
+      }
+    }
+
+    // sternum: manubrium (wider) tapering into the narrower body
+    gShapes.appendChild(
+      el("path", {
+        d: `M ${midX - 8} ${midY - 34} L ${midX + 8} ${midY - 34} L ${midX + 6} ${midY - 18}
+            L ${midX + 4.5} ${midY - 18} L ${midX + 4.5} ${midY + 16} L ${midX - 4.5} ${midY + 16}
+            L ${midX - 4.5} ${midY - 18} L ${midX - 6} ${midY - 18} Z`,
+        class: cls,
+        transform: `rotate(${rot} ${midX} ${midY})`,
+      })
+    );
+
+    drawVertebrae(gShapes, pelvis, chest, 5, 15, 12, cls);
+    drawVertebrae(gShapes, chest, screenPos.neck, 3, 10, 8, shapeClass("torso-shape", ["chest", "neck"]));
+  }
+
+  // -- skull: cranium, jaw, eye sockets, nose, and teeth -------------
+  function drawSkull(gShapes, gMarks, screenPos) {
+    const head = screenPos.head, neck = screenPos.neck;
+    const rot = screenAngle(neck, head) + 90;
+    const cx = neck.x + (head.x - neck.x) * 0.55;
+    const cy = neck.y + (head.y - neck.y) * 0.55;
+    const cls = shapeClass("torso-shape", ["head", "neck"]);
+    const markCls = shapeClass("detail-mark", ["head", "neck"]);
+    const transform = `translate(${cx} ${cy}) rotate(${rot})`;
+
+    gShapes.appendChild(
+      el("path", {
+        d: "M -22 4 C -24 -14 -12 -25 0 -25 C 12 -25 24 -14 22 4 C 21 10 15 13 8 14 L -8 14 C -15 13 -21 10 -22 4 Z",
+        class: cls, transform,
+      })
+    );
+    gShapes.appendChild(
+      el("path", { d: "M -8 14 C -9 22 -5 29 0 30 C 5 29 9 22 8 14 Z", class: cls, transform })
+    );
+    const socketCls = shapeClass("eye-socket", ["head", "neck"]);
+    gMarks.appendChild(el("circle", { cx: -8, cy: 0, r: 4.5, class: socketCls, transform }));
+    gMarks.appendChild(el("circle", { cx: 8, cy: 0, r: 4.5, class: socketCls, transform }));
+    gMarks.appendChild(el("path", { d: "M -2 6 L 2 6 L 0 11 Z", class: markCls, transform }));
+    for (let i = -4; i <= 4; i++) {
+      const tx = i * 1.6;
+      gMarks.appendChild(
+        el("line", { x1: tx, y1: 25, x2: tx, y2: 28.5, class: markCls, transform })
+      );
+    }
+  }
+
+  function drawClavicle(group, chest, shoulder, side, cls, fillCls) {
+    const dx = shoulder.x - chest.x, dy = shoulder.y - chest.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = -dy / len, uy = dx / len;
+    const bow = 7 * side;
+    const c1x = chest.x + dx * 0.3 + ux * bow, c1y = chest.y + dy * 0.3 + uy * bow;
+    const c2x = chest.x + dx * 0.7 - ux * bow, c2y = chest.y + dy * 0.7 - uy * bow;
+    const d = `M ${chest.x} ${chest.y} C ${c1x} ${c1y} ${c2x} ${c2y} ${shoulder.x} ${shoulder.y}`;
+    group.appendChild(el("path", { d, class: cls, style: "stroke-width:9px" }));
+    group.appendChild(el("path", { d, class: fillCls, style: "stroke-width:5px" }));
+  }
+
+  function drawHand(group, wrist, hand, cls) {
+    const dx = hand.x - wrist.x, dy = hand.y - wrist.y;
+    const L = Math.hypot(dx, dy) || 1;
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const g = el("g", { transform: `translate(${wrist.x} ${wrist.y}) rotate(${angleDeg})` });
+    g.appendChild(
+      el("path", {
+        d: `M 0 -6 C ${L * 0.4} -8 ${L * 0.68} -7 ${L * 0.72} -4 L ${L * 0.72} 4 C ${L * 0.68} 7 ${L * 0.4} 8 0 6 Z`,
+        class: cls,
+      })
+    );
+    for (let i = -1.5; i <= 1.5; i++) {
+      const fy = i * 3.2;
+      const flen = L * 0.32 - Math.abs(i) * L * 0.05;
+      g.appendChild(
+        el("line", {
+          x1: L * 0.72, y1: fy * 0.9, x2: L * 0.72 + flen, y2: fy,
+          class: cls, "stroke-width": 2.4, "stroke-linecap": "round",
+        })
+      );
+    }
+    group.appendChild(g);
+  }
+
+  function drawFoot(group, ankle, toe, cls) {
+    const dx = toe.x - ankle.x, dy = toe.y - ankle.y;
+    const L = Math.hypot(dx, dy) || 1;
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const g = el("g", { transform: `translate(${ankle.x} ${ankle.y}) rotate(${angleDeg})` });
+    g.appendChild(
+      el("path", {
+        d: `M -8 -6 C 4 -8 ${L * 0.7} -7 ${L * 0.88} -3 L ${L} 0 L ${L * 0.88} 3 C ${L * 0.7} 7 4 8 -8 6 C -13 3 -13 -3 -8 -6 Z`,
+        class: cls,
+      })
+    );
+    for (let i = 0; i < 4; i++) {
+      const fy = -4.2 + i * 2.8;
+      g.appendChild(
+        el("line", {
+          x1: L * 0.9, y1: fy * 0.55, x2: L * 0.98 + (i === 0 ? 4 : 2), y2: fy * 0.55,
+          class: cls, "stroke-width": 2, "stroke-linecap": "round",
+        })
+      );
+    }
+    group.appendChild(g);
+  }
+
+  function drawSkeletonBody(screenPos) {
+    drawPelvis(gShapes, gShapes, screenPos);
+    drawTorso(gShapes, gMarks, screenPos);
+    drawSkull(gShapes, gMarks, screenPos);
+
+    for (const side of ["L", "R"]) {
+      const chest = screenPos.chest;
+      const shoulder = screenPos["shoulder" + side];
+      const elbow = screenPos["elbow" + side];
+      const wrist = screenPos["wrist" + side];
+      const hand = screenPos["hand" + side];
+      const hip = screenPos["hip" + side];
+      const knee = screenPos["knee" + side];
+      const ankle = screenPos["ankle" + side];
+      const foot = screenPos["foot" + side];
+
+      drawClavicle(
+        gBones, chest, shoulder, side === "L" ? -1 : 1,
+        shapeClass("clavicle", ["shoulder" + side]),
+        shapeClass("clavicle-fill", ["shoulder" + side])
+      );
+      drawLongBone(gBones, shoulder, elbow, 6, 10, 16, 0, shapeClass("bone-shape", ["elbow" + side]), shapeClass("bone-seam", ["elbow" + side]));
+      drawLongBone(gBones, elbow, wrist, 4.5, 7, 12, 3, shapeClass("bone-shape", ["wrist" + side]), shapeClass("bone-seam", ["wrist" + side]));
+      drawLongBone(gBones, elbow, wrist, 3.5, 6, 10, -3, shapeClass("bone-shape-thin", ["wrist" + side]));
+      drawHand(gBones, wrist, hand, shapeClass("bone-shape", ["hand" + side]));
+
+      drawLongBone(gBones, hip, knee, 8, 14, 18, 0, shapeClass("bone-shape", ["knee" + side]), shapeClass("bone-seam", ["knee" + side]));
+      drawLongBone(gBones, knee, ankle, 6, 10, 14, -3, shapeClass("bone-shape", ["ankle" + side]), shapeClass("bone-seam", ["ankle" + side]));
+      drawLongBone(gBones, knee, ankle, 3, 5, 8, 6, shapeClass("bone-shape-thin", ["ankle" + side]));
+      drawFoot(gBones, ankle, foot, shapeClass("bone-shape", ["foot" + side]));
+
+      gMarks.appendChild(el("circle", { cx: knee.x, cy: knee.y, r: 6, class: shapeClass("detail-mark", ["knee" + side]) }));
+    }
+  }
+
+  function drawJoints(screenPos, modelPos) {
+    for (const id of JOINT_ORDER) {
+      const j = state.joints[id];
+      const p = screenPos[id];
+      const related = isRelated(id);
+      const selected = state.selected === id;
+      const draggable = j.draggable === true || j.draggable === "translate";
+
+      const cls = ["joint-handle"];
+      if (draggable) cls.push("draggable");
+      if (selected) cls.push("selected");
+      if (state.dragging === id) cls.push("dragging");
+      if (!related) cls.push("dimmed");
+
+      const r = j.draggable === false ? (selected ? 7 : 4) : selected ? 11 : 6.5;
+
+      const circle = el("circle", {
+        cx: p.x, cy: p.y, r,
+        class: cls.join(" "),
+        "data-joint": id,
+      });
+      gJoints.appendChild(circle);
+
+      const dot = el("circle", {
+        cx: p.x, cy: p.y, r: 2,
+        class: `joint-dot ${selected ? "selected" : ""} ${!related ? "dimmed" : ""}`.trim(),
+      });
+      gJoints.appendChild(dot);
+
+      // angle label
+      const angle = getFlexionAngle(id, modelPos);
+      if (angle !== null) {
+        const showLabel = selected;
+        const labelCls = ["angle-label"];
+        if (selected) labelCls.push("selected");
+        if (!showLabel) labelCls.push("dimmed");
+        const text = el("text", {
+          x: p.x + 12, y: p.y - 10,
+          class: labelCls.join(" "),
+        });
+        text.textContent = `${angle}°`;
+        gLabels.appendChild(text);
+      }
+    }
+  }
+
+  // -- biomechanics markers: vectors, moment arc, COM, GRF ----------
+  function drawVector(group, x, y, dirX, dirY, value, pxPerUnit, maxLen, cls, label, unit) {
+    let len = value * pxPerUnit;
+    const sign = len < 0 ? -1 : 1;
+    len = Math.min(Math.abs(len), maxLen) * sign;
+    if (Math.abs(len) < 3) return;
+
+    const dx = dirX * len, dy = dirY * len;
+    const tipX = x + dx, tipY = y + dy;
+    const ang = Math.atan2(dy, dx);
+    const headLen = 9, headWidth = 5;
+    const backX = tipX - Math.cos(ang) * headLen, backY = tipY - Math.sin(ang) * headLen;
+    const leftX = backX - Math.sin(ang) * headWidth, leftY = backY + Math.cos(ang) * headWidth;
+    const rightX = backX + Math.sin(ang) * headWidth, rightY = backY - Math.cos(ang) * headWidth;
+
+    group.appendChild(el("line", { x1: x, y1: y, x2: backX, y2: backY, class: `vec-line ${cls}` }));
+    group.appendChild(el("path", { d: `M ${tipX} ${tipY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z`, class: `vec-head ${cls}` }));
+
+    const text = el("text", { x: tipX + dirX * 12, y: tipY + dirY * 12, class: `vec-label ${cls}` });
+    text.textContent = `${label} ${value.toFixed(1)}${unit}`;
+    group.appendChild(text);
+  }
+
+  function drawMomentArc(group, center, info) {
+    const alpha = info.r > 0 ? state.kinetics.a / info.r : 0; // angular acceleration, rad/s^2
+    const M = info.iJoint * alpha;
+    if (Math.abs(M) < 0.05) return;
+
+    const radius = 26;
+    const sweepDeg = Math.min(30 + Math.abs(M) * 6, 260);
+    const dir = M >= 0 ? 1 : -1; // positive M sweeps counter-clockwise
+    const startDeg = -90;
+    const endDeg = startDeg + dir * sweepDeg;
+    const startRad = (startDeg * Math.PI) / 180, endRad = (endDeg * Math.PI) / 180;
+    const startX = center.x + radius * Math.cos(startRad), startY = center.y + radius * Math.sin(startRad);
+    const endX = center.x + radius * Math.cos(endRad), endY = center.y + radius * Math.sin(endRad);
+    const largeArc = sweepDeg > 180 ? 1 : 0;
+    const sweepFlag = dir > 0 ? 1 : 0;
+
+    group.appendChild(
+      el("path", { d: `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} ${sweepFlag} ${endX} ${endY}`, class: "moment-arc" })
+    );
+
+    const radialX = Math.cos(endRad), radialY = Math.sin(endRad);
+    const tangentX = -radialY * dir, tangentY = radialX * dir;
+    const tipX = endX + tangentX * 4, tipY = endY + tangentY * 4;
+    const backX = endX - tangentX * 6, backY = endY - tangentY * 6;
+    const leftX = backX + radialX * 5, leftY = backY + radialY * 5;
+    const rightX = backX - radialX * 5, rightY = backY - radialY * 5;
+    group.appendChild(el("path", { d: `M ${tipX} ${tipY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z`, class: "moment-head" }));
+
+    const label = el("text", { x: center.x + radius + 6, y: center.y - radius, class: "vec-label", fill: "#b5852f" });
+    label.textContent = `M ${M.toFixed(1)} N·m`;
+    group.appendChild(label);
+  }
+
+  function drawComMarker(group, modelPos) {
+    const com = computeBodyCOM(modelPos);
+    const r = 9;
+    group.appendChild(el("circle", { cx: com.x, cy: com.y, r, class: "com-marker" }));
+    group.appendChild(el("line", { x1: com.x - r - 5, y1: com.y, x2: com.x + r + 5, y2: com.y, class: "com-crosshair" }));
+    group.appendChild(el("line", { x1: com.x, y1: com.y - r - 5, x2: com.x, y2: com.y + r + 5, class: "com-crosshair" }));
+    const label = el("text", { x: com.x + r + 8, y: com.y + 4, class: "com-label" });
+    label.textContent = "COM";
+    group.appendChild(label);
+  }
+
+  function drawGrfArrow(group, screenPos) {
+    const fl = screenPos.footL, fr = screenPos.footR;
+    const baseX = (fl.x + fr.x) / 2;
+    const baseY = Math.max(fl.y, fr.y) + 16;
+    const grf = computeGRF();
+    const pxPerN = 0.16;
+    const len = Math.min(Math.abs(grf) * pxPerN, 110);
+    const tipY = baseY - len;
+
+    group.appendChild(el("line", { x1: baseX, y1: baseY, x2: baseX, y2: tipY + 9, class: "grf-line" }));
+    group.appendChild(el("path", { d: `M ${baseX} ${tipY} L ${baseX - 6} ${tipY + 9} L ${baseX + 6} ${tipY + 9} Z`, class: "grf-head" }));
+
+    const label = el("text", { x: baseX + 10, y: baseY - len / 2, class: "grf-label" });
+    label.textContent = `GRF ${grf.toFixed(0)} N`;
+    group.appendChild(label);
+  }
+
+  function drawBiomechanics(screenPos, modelPos) {
+    if (state.bio.com) drawComMarker(gBio, modelPos);
+    if (!state.selected) return;
+
+    const info = getSegmentInfo(state.selected);
+    if (!info) return;
+
+    if (state.bio.grf) drawGrfArrow(gBio, screenPos);
+
+    const jointPos = screenPos[state.selected];
+    const proxPos = screenPos[info.proximal];
+    const dx = jointPos.x - proxPos.x, dy = jointPos.y - proxPos.y;
+    const boneLen = Math.hypot(dx, dy) || 1;
+    const ux = dx / boneLen, uy = dy / boneLen;
+    const tangentX = -uy, tangentY = ux;
+    const comX = proxPos.x + dx * info.comFrac;
+    const comY = proxPos.y + dy * info.comFrac;
+
+    if (state.bio.velocity) {
+      drawVector(gBio, comX - ux * 14, comY - uy * 14, tangentX, tangentY, state.kinetics.v, 14, 80, "vec-velocity", "v", " m/s");
+    }
+    if (state.bio.acceleration) {
+      drawVector(gBio, comX, comY, tangentX, tangentY, state.kinetics.a, 4, 80, "vec-accel", "a", " m/s²");
+    }
+    if (state.bio.force) {
+      drawVector(gBio, comX + ux * 14, comY + uy * 14, tangentX, tangentY, state.kinetics.F, 0.4, 80, "vec-force", "F", " N");
+    }
+    if (state.bio.moment) {
+      // the moment acts about the segment's pivot (its proximal joint),
+      // not the isolated joint itself, which is the segment's far end
+      drawMomentArc(gBio, proxPos, info);
+    }
+  }
+
+  function renderSidePanel(modelPos) {
     const empty = document.getElementById("panelEmpty");
     const filled = document.getElementById("panelSelected");
     if (!state.selected) {
@@ -612,9 +754,9 @@
     }
     empty.hidden = true;
     filled.hidden = false;
-    const b = BONES[state.selected];
-    document.getElementById("selJointName").textContent = b.label;
-    const angle = getFlexionAngle(state.selected, pos);
+    const j = state.joints[state.selected];
+    document.getElementById("selJointName").textContent = j.label;
+    const angle = getFlexionAngle(state.selected, modelPos);
     const angleEl = document.getElementById("selJointAngle");
     const caption = document.getElementById("selJointCaption");
     if (angle === null) {
@@ -622,13 +764,14 @@
       caption.textContent = "This joint has no further bone beyond it, so no flexion angle applies. Drag it to change the limb's orientation.";
     } else {
       angleEl.textContent = `${angle}°`;
-      caption.textContent = "0° is anatomical neutral (fully extended); positive values are flexion, negative values are extension past neutral.";
+      caption.textContent = "Angle between the two adjoining bones. 180° is fully extended, smaller values mean more flexed.";
     }
   }
 
-  function updateRomPanel(pos) {
+  function updateRomPanel(modelPos) {
     const romSection = document.getElementById("romSection");
-    const rom = state.selected ? getRomInfo(state.selected, pos) : null;
+    const rom = state.selected ? getRomInfo(state.selected, modelPos) : null;
+
     if (!rom) {
       romSection.hidden = true;
       return;
@@ -637,42 +780,34 @@
 
     document.getElementById("romLabel").textContent = rom.label;
     document.getElementById("romValueNum").textContent = `${Math.round(rom.flex)}°`;
+    document.getElementById("romValueOf").textContent = `of 0–${rom.max}°`;
 
-    const pad = Math.max(15, (rom.romMax - rom.romMin) * 0.25);
-    const dispMin = rom.romMin - pad;
-    const dispMax = rom.romMax + pad;
-    const span = dispMax - dispMin;
-    const pct = (v) => Math.min(100, Math.max(0, ((v - dispMin) / span) * 100));
+    const displayMax = rom.max * 1.3;
+    const normalPct = Math.min(100, (rom.max / displayMax) * 100);
+    document.getElementById("romNormalZone").style.width = `${normalPct}%`;
+    const exceedZone = document.getElementById("romExceedZone");
+    exceedZone.style.left = `${normalPct}%`;
+    exceedZone.style.width = `${100 - normalPct}%`;
 
-    const loPct = pct(rom.romMin);
-    const hiPct = pct(rom.romMax);
-    document.getElementById("romExceedZoneLo").style.width = `${loPct}%`;
-    document.getElementById("romNormalZone").style.left = `${loPct}%`;
-    document.getElementById("romNormalZone").style.width = `${hiPct - loPct}%`;
-    document.getElementById("romExceedZone").style.width = `${100 - hiPct}%`;
-    document.getElementById("romNeutralTick").style.left = `${pct(0)}%`;
-
-    const markerPct = pct(rom.flex);
+    const markerPct = Math.min(100, (rom.flex / displayMax) * 100);
     const marker = document.getElementById("romMarker");
     marker.style.left = `${markerPct}%`;
     marker.classList.toggle("exceeds", rom.exceeds);
 
     const caption = document.getElementById("romCaption");
     caption.classList.toggle("exceeds", rom.exceeds);
-    if (!rom.exceeds) {
-      caption.textContent = "Within the typical normal range.";
-    } else if (rom.flex > rom.romMax) {
-      caption.textContent = `Exceeds the typical flexion range by ${Math.round(rom.flex - rom.romMax)}°.`;
-    } else {
-      caption.textContent = `Exceeds the typical extension range by ${Math.round(rom.romMin - rom.flex)}°.`;
-    }
+    caption.textContent = rom.exceeds
+      ? `Exceeds the typical normal range by ${Math.round(rom.flex - rom.max)}°.`
+      : "Within the typical normal range.";
   }
 
+  // -- biomechanics side-panel readouts (updates existing DOM nodes -
+  // -- values only - so a focused text input never loses the caret) --
   function setIfNotFocused(el, value) {
     if (document.activeElement !== el) el.value = value;
   }
 
-  function updateBioPanel(pos) {
+  function updateBioPanel(modelPos) {
     const bioSection = document.getElementById("bioSection");
     const info = state.selected ? getSegmentInfo(state.selected) : null;
 
@@ -682,7 +817,7 @@
     }
     bioSection.hidden = false;
 
-    const pivotLabel = BONES[info.proximal].label;
+    const pivotLabel = state.joints[info.proximal].label;
     document.getElementById("bioSegmentLabel").textContent =
       `Segment: ${info.label} · mass ≈ ${info.m.toFixed(2)} kg · pivots at ${pivotLabel}`;
 
@@ -698,97 +833,104 @@
     setIfNotFocused(document.getElementById("inputAcceleration"), Math.round(state.kinetics.a * 100) / 100);
 
     if (state.bio.moment) {
-      const alpha = info.r > 0 ? state.kinetics.a / info.r : 0;
+      const alpha = info.r > 0 ? state.kinetics.a / info.r : 0; // angular accel, rad/s^2
       const M = info.iJoint * alpha;
       document.getElementById("readoutMoment").innerHTML = `${M.toFixed(2)} N&middot;m`;
     }
+
     if (state.bio.com) {
-      const com = computeBodyCOM(pos);
-      document.getElementById("readoutCom").textContent = `x ${com.x.toFixed(0)}, y ${com.y.toFixed(0)}, z ${com.z.toFixed(0)}`;
+      const com = computeBodyCOM(modelPos);
+      document.getElementById("readoutCom").textContent = `x ${com.x.toFixed(0)}, y ${com.y.toFixed(0)} px`;
     }
+
     if (state.bio.grf) {
-      document.getElementById("readoutGrf").textContent = `${computeGRF().toFixed(0)} N`;
+      const grf = computeGRF();
+      document.getElementById("readoutGrf").textContent = `${grf.toFixed(0)} N`;
     }
   }
 
   // ---------------------------------------------------------------
-  // Interaction: raycast to pick a joint; click to isolate; drag a
-  // draggable joint's vertical mouse motion into its bend angle.
+  // Interaction
   // ---------------------------------------------------------------
-  const raycaster = new THREE.Raycaster();
-  const pointerNdc = new THREE.Vector2();
-  const BIO_INPUT_IDS = ["inputForce", "inputVelocity", "inputAcceleration"];
+  function svgPointFromEvent(evt) {
+    const rect = svg.getBoundingClientRect();
+    const x = ((evt.clientX - rect.left) / rect.width) * VBW;
+    const y = ((evt.clientY - rect.top) / rect.height) * VBH;
+    return { x, y };
+  }
 
-  let dragging = null; // { id, startY, startAngle }
-  let downPos = null;
+  let activePointerId = null;
+
+  const BIO_INPUT_IDS = ["inputForce", "inputVelocity", "inputAcceleration"];
 
   function selectJoint(id) {
     if (state.selected !== id) {
       resetKinetics();
+      // clicking the SVG doesn't naturally blur a focused text field here
+      // (pointerdown below calls preventDefault to stop drag-selection),
+      // so drop focus explicitly or the reset value won't get displayed
       const active = document.activeElement;
       if (active && BIO_INPUT_IDS.includes(active.id)) active.blur();
     }
     state.selected = id;
   }
 
-  function pickJointAt(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
-    pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-    pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(pointerNdc, camera);
-    const hits = raycaster.intersectObjects(pickables, false);
-    return hits.length ? hits[0].object.userData.jointId : null;
-  }
-
   function onPointerDown(evt) {
-    downPos = { x: evt.clientX, y: evt.clientY };
-    const id = pickJointAt(evt.clientX, evt.clientY);
-    if (!id) return; // empty space: let OrbitControls orbit; selection clears on click (pointerup w/o drag)
-
-    selectJoint(id);
-    render();
-
-    const b = BONES[id];
-    if (b.draggable) {
-      controls.enabled = false;
-      dragging = { id, startY: evt.clientY, startAngle: state.angles[id] };
-      canvas.setPointerCapture(evt.pointerId);
-      evt.stopImmediatePropagation();
-      evt.preventDefault();
+    const target = evt.target.closest("[data-joint]");
+    if (!target) {
+      // clicked empty space -> clear selection
+      selectJoint(null);
+      render();
+      return;
     }
+    const id = target.getAttribute("data-joint");
+    selectJoint(id);
+
+    const j = state.joints[id];
+    if (j.draggable === true || j.draggable === "translate") {
+      state.dragging = id;
+      activePointerId = evt.pointerId;
+      svg.setPointerCapture(evt.pointerId);
+    }
+    render();
+    evt.preventDefault();
   }
 
   function onPointerMove(evt) {
-    if (!dragging) return;
-    const b = BONES[dragging.id];
-    const deltaY = dragging.startY - evt.clientY; // up = increase angle
-    const next = dragging.startAngle + deltaY * 0.4;
-    state.angles[dragging.id] = Math.min(b.angleMax, Math.max(b.angleMin, next));
+    if (!state.dragging || evt.pointerId !== activePointerId) return;
+    const modelPt = svgPointFromEvent(evt);
+    const j = state.joints[state.dragging];
+
+    if (j.draggable === "translate") {
+      j.x = clamp(modelPt.x, 40, VBW - 40);
+      j.y = clamp(modelPt.y, 40, VBH - 40);
+    } else {
+      const pos = computePositions();
+      const p = pos[j.parent];
+      const dx = modelPt.x - p.x;
+      const dy = modelPt.y - p.y;
+      j.angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    }
     render();
   }
 
   function onPointerUp(evt) {
-    if (dragging) {
-      try { canvas.releasePointerCapture(evt.pointerId); } catch (e) {}
-      dragging = null;
-      controls.enabled = true;
-      return;
+    if (evt.pointerId === activePointerId) {
+      try { svg.releasePointerCapture(evt.pointerId); } catch (e) {}
     }
-    // a plain click (little/no movement) on empty space clears selection
-    if (downPos && Math.hypot(evt.clientX - downPos.x, evt.clientY - downPos.y) < 4) {
-      const id = pickJointAt(evt.clientX, evt.clientY);
-      if (!id) {
-        selectJoint(null);
-        render();
-      }
-    }
-    downPos = null;
+    state.dragging = null;
+    activePointerId = null;
+    render();
   }
 
-  canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
-  canvas.addEventListener("pointermove", onPointerMove);
-  window.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("pointercancel", onPointerUp);
+  function clamp(v, lo, hi) {
+    return Math.min(hi, Math.max(lo, v));
+  }
+
+  svg.addEventListener("pointerdown", onPointerDown);
+  svg.addEventListener("pointermove", onPointerMove);
+  svg.addEventListener("pointerup", onPointerUp);
+  svg.addEventListener("pointercancel", onPointerUp);
 
   document.addEventListener("keydown", (evt) => {
     if (evt.key === "Escape") {
@@ -801,7 +943,7 @@
   // Toolbar wiring
   // ---------------------------------------------------------------
   document.getElementById("resetBtn").addEventListener("click", () => {
-    state.angles = freshAngles();
+    state.joints = freshState();
     selectJoint(null);
     render();
   });
@@ -816,8 +958,11 @@
   function setBodyMass(val) {
     if (!Number.isFinite(val) || val <= 0) return;
     state.bodyMass = val;
+    // mass changed -> re-derive force from the current acceleration
     const info = getSegmentInfo(state.selected);
-    if (info) state.kinetics.F = info.m * state.kinetics.a;
+    if (info) {
+      state.kinetics.F = info.m * state.kinetics.a;
+    }
     render();
   }
 
@@ -842,36 +987,25 @@
 
   document.getElementById("inputForce").addEventListener("input", (evt) => {
     const val = parseFloat(evt.target.value);
-    if (Number.isFinite(val)) { setForce(val); render(); }
+    if (Number.isFinite(val)) {
+      setForce(val);
+      render();
+    }
   });
   document.getElementById("inputVelocity").addEventListener("input", (evt) => {
     const val = parseFloat(evt.target.value);
-    if (Number.isFinite(val)) { setVelocity(val); render(); }
+    if (Number.isFinite(val)) {
+      setVelocity(val);
+      render();
+    }
   });
   document.getElementById("inputAcceleration").addEventListener("input", (evt) => {
     const val = parseFloat(evt.target.value);
-    if (Number.isFinite(val)) { setAcceleration(val); render(); }
+    if (Number.isFinite(val)) {
+      setAcceleration(val);
+      render();
+    }
   });
 
-  // ---------------------------------------------------------------
-  // Resize + render loop
-  // ---------------------------------------------------------------
-  function resize() {
-    const rect = wrap.getBoundingClientRect();
-    renderer.setSize(rect.width, rect.height, false);
-    camera.aspect = rect.width / rect.height;
-    camera.updateProjectionMatrix();
-  }
-  window.addEventListener("resize", resize);
-  resize();
-
-  function animate() {
-    requestAnimationFrame(animate);
-    controls.update();
-    updateLabelPositions();
-    renderer.render(scene, camera);
-  }
-
   render();
-  animate();
 })();
