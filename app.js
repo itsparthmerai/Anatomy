@@ -505,6 +505,10 @@
   }
 
   // -- skull: cranium, jaw, eye sockets, nose, and teeth -------------
+  // -- skull: braincase narrowing through the cheekbones to a distinct
+  // -- jaw, large orbital eye sockets, a two-lobed nasal aperture, and
+  // -- a tooth row -- the recognizable front-view landmarks of a real
+  // -- skull rather than a rounded, featureless head silhouette.
   function drawSkull(gShapes, gMarks, screenPos) {
     const head = screenPos.head, neck = screenPos.neck;
     const rot = screenAngle(neck, head) + 90;
@@ -516,21 +520,42 @@
 
     gShapes.appendChild(
       el("path", {
-        d: "M -22 4 C -24 -14 -12 -25 0 -25 C 12 -25 24 -14 22 4 C 21 10 15 13 8 14 L -8 14 C -15 13 -21 10 -22 4 Z",
+        d: `M 0 -27
+            C -13 -27 -22 -18 -21 -8
+            C -21 -2 -21 3 -19 8
+            C -18 12 -17 12 -16 14
+            C -18 18 -17 22 -13 25
+            C -9 29 -4 30 0 30
+            C 4 30 9 29 13 25
+            C 17 22 18 18 16 14
+            C 17 12 18 12 19 8
+            C 21 3 21 -2 21 -8
+            C 22 -18 13 -27 0 -27
+            Z`,
         class: cls, transform,
       })
     );
-    gShapes.appendChild(
-      el("path", { d: "M -8 14 C -9 22 -5 29 0 30 C 5 29 9 22 8 14 Z", class: cls, transform })
-    );
+
+    // sagittal suture hint down the crown/forehead
+    gMarks.appendChild(el("line", { x1: 0, y1: -26, x2: 0, y2: -11, class: markCls, transform }));
+
     const socketCls = shapeClass("eye-socket", ["head", "neck"]);
-    gMarks.appendChild(el("circle", { cx: -8, cy: 0, r: 4.5, class: socketCls, transform }));
-    gMarks.appendChild(el("circle", { cx: 8, cy: 0, r: 4.5, class: socketCls, transform }));
-    gMarks.appendChild(el("path", { d: "M -2 6 L 2 6 L 0 11 Z", class: markCls, transform }));
-    for (let i = -4; i <= 4; i++) {
+    const orbitPath = "M -4 -4 C -6 -4 -7 -1 -6.5 2 C -6 4.5 -3 6 0 5.5 C 3 5 4.5 2 4 -1 C 3.5 -4 0 -5 -4 -4 Z";
+    gMarks.appendChild(el("path", { d: orbitPath, class: socketCls, transform: `${transform} translate(-9 -5)` }));
+    gMarks.appendChild(el("path", { d: orbitPath, class: socketCls, transform: `${transform} translate(9 -5) scale(-1 1)` }));
+
+    // piriform aperture: the two-lobed nasal opening between the eyes
+    gMarks.appendChild(
+      el("path", {
+        d: "M 0 -1 C -2.5 -1 -4 2 -3.3 5 C -2.8 7.3 -1.2 8 0 6.3 C 1.2 8 2.8 7.3 3.3 5 C 4 2 2.5 -1 0 -1 Z",
+        class: markCls, transform: `${transform} translate(0 3)`,
+      })
+    );
+
+    for (let i = -3; i <= 3; i++) {
       const tx = i * 1.6;
       gMarks.appendChild(
-        el("line", { x1: tx, y1: 25, x2: tx, y2: 28.5, class: markCls, transform })
+        el("line", { x1: tx, y1: 23.5, x2: tx, y2: 27, class: markCls, transform })
       );
     }
   }
@@ -593,7 +618,11 @@
     drawVertebrae(gShapes, chest, screenPos.neck, 3, 10, 8, shapeClass("torso-shape", ["chest", "neck"]));
   }
 
-  // -- lateral skull: cranium, jaw, one eye, ear, and a nose in profile
+  // -- lateral skull: rounded braincase and occiput, brow ridge, a
+  // -- distinct mandible with jaw angle and chin, a real orbital eye
+  // -- socket, zygomatic arch, ear opening, and a tooth row -- facing
+  // -- +X (the same "anterior/forward" direction as the rest of the
+  // -- lateral pose).
   function drawSkullLateral(gShapes, gMarks, screenPos) {
     const head = screenPos.head, neck = screenPos.neck;
     const rot = screenAngle(neck, head) + 90;
@@ -603,28 +632,53 @@
     const markCls = shapeClass("detail-mark", ["head", "neck"]);
     const transform = `translate(${cx} ${cy}) rotate(${rot})`;
 
+    // cranium: a rounded dome with a flattened occiput at the back
     gShapes.appendChild(
       el("path", {
-        d: `M 0 -25
-            C -13 -25 -19 -15 -18 -3
-            C -17 4 -14 8 -10 11
-            L -10 15
-            C -10 20 -6 23 -1 23
-            L 8 23
-            C 12 23 14 19 15 15
-            C 18 11 21 6 19 0
-            C 18 -4 15 -4 14 -8
-            C 17 -13 15 -20 10 -23
-            C 7 -25 3 -25 0 -25
+        d: `M -2 -26
+            C -15 -26 -21 -16 -19 -5
+            C -18 1 -15 6 -10 9
+            L -10 13
+            C -10 16 -7 17 -3 16
+            C 3 15 9 12 12 7
+            C 16 1 17 -8 13 -16
+            C 10 -23 4 -26 -2 -26
             Z`,
         class: cls, transform,
       })
     );
+    // mandible: hangs separately below, with a visible hinge gap at the
+    // ear -- the jaw is a distinct bone, not a continuation of the skull
+    gShapes.appendChild(
+      el("path", {
+        d: `M -9 14
+            C -9 18 -6 21 -1 22
+            C 4 23 10 21 13 17
+            C 15 14 15 10 12 8
+            C 9 9 4 11 -1 11
+            C -5 11 -8 12 -9 14
+            Z`,
+        class: cls, transform,
+      })
+    );
+
+    // brow/crown suture hint
+    gMarks.appendChild(el("path", { d: "M -14 -22 Q -3 -28 8 -20", class: markCls, transform }));
+
     const socketCls = shapeClass("eye-socket", ["head", "neck"]);
-    gMarks.appendChild(el("circle", { cx: 7, cy: -4, r: 3.2, class: socketCls, transform }));
-    gMarks.appendChild(el("circle", { cx: -12, cy: 0, r: 3.2, class: markCls, transform }));
-    gMarks.appendChild(el("path", { d: "M 15 -2 L 19 1 L 15 4", class: markCls, transform }));
-    gMarks.appendChild(el("line", { x1: 8, y1: 17, x2: 13, y2: 16, class: markCls, transform }));
+    gMarks.appendChild(
+      el("path", {
+        d: "M -3.5 -3.5 C -5.5 -3 -6 -0.5 -5 2 C -4 4.5 -1 5.5 1.5 4.5 C 4 3.5 4.5 0.5 3.5 -2 C 2.5 -4.5 -1 -4.5 -3.5 -3.5 Z",
+        class: socketCls, transform: `${transform} translate(4 -9)`,
+      })
+    );
+
+    // ear opening, right at the jaw hinge
+    gMarks.appendChild(el("circle", { cx: -8, cy: 11.5, r: 2.2, class: markCls, transform }));
+    // nose hint at the front profile
+    gMarks.appendChild(el("path", { d: "M 12 1 L 15 4 L 12 6.5", class: markCls, transform }));
+    // teeth along the jaw's front edge
+    gMarks.appendChild(el("line", { x1: -1, y1: 20, x2: 9, y2: 17.5, class: markCls, transform }));
   }
 
   function drawClavicle(group, chest, shoulder, side, cls, fillCls) {
