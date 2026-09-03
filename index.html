@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Kinesis — Interactive 3D Skeleton</title>
+<title>Kinesis — Interactive Skeleton</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -26,14 +26,20 @@
 
     <main class="stage">
       <div class="canvas-wrap">
-        <canvas id="glCanvas"></canvas>
-        <div class="view-hint">Drag empty space to orbit &middot; scroll to zoom</div>
+        <svg id="skeletonSvg" viewBox="0 0 480 640" preserveAspectRatio="xMidYMid meet" aria-label="Interactive skeleton diagram">
+          <g id="shapesGroup"></g>
+          <g id="bonesGroup"></g>
+          <g id="marksGroup"></g>
+          <g id="bioGroup"></g>
+          <g id="jointsGroup"></g>
+          <g id="labelsGroup"></g>
+        </svg>
       </div>
 
       <aside class="panel" id="infoPanel">
         <div class="panel-empty" id="panelEmpty">
           <h2>No joint selected</h2>
-          <p>Drag a joint handle to bend the bone it controls. Click a joint to isolate it — everything else fades so you can focus on a single motion. Drag empty space to orbit the camera around the model, from the front, the side, or anywhere between.</p>
+          <p>Drag any handle to pose the skeleton. Click a joint to isolate it — everything else fades so you can focus on a single motion.</p>
 
           <div class="mass-field">
             <label for="bodyMassInput2">Body mass</label>
@@ -44,8 +50,7 @@
           </div>
 
           <ul class="hints">
-            <li><span>Drag</span> a joint handle up/down to bend it</li>
-            <li><span>Drag</span> empty space to orbit the camera</li>
+            <li><span>Drag</span> a joint to rotate the bone around it</li>
             <li><span>Click</span> a joint to isolate &amp; inspect it</li>
             <li><span>Click</span> empty space to clear selection</li>
           </ul>
@@ -58,24 +63,22 @@
             <span class="angle-value" id="selJointAngle">—</span>
             <span class="angle-unit">degrees</span>
           </div>
-          <p class="angle-caption" id="selJointCaption">0° is anatomical neutral (fully extended); positive values are flexion, negative values are extension past neutral.</p>
+          <p class="angle-caption" id="selJointCaption">Angle between the two adjoining bones. 180° is fully extended.</p>
 
           <div class="rom-section" id="romSection">
             <div class="rom-divider"></div>
             <span class="panel-kicker">Range of motion</span>
             <div class="rom-header">
               <span class="rom-label" id="romLabel">—</span>
-              <span class="rom-value"><span id="romValueNum">—</span></span>
+              <span class="rom-value"><span id="romValueNum">—</span> <span class="rom-of" id="romValueOf"></span></span>
             </div>
             <div class="rom-track">
-              <div class="rom-exceed-zone-lo" id="romExceedZoneLo"></div>
               <div class="rom-normal-zone" id="romNormalZone"></div>
               <div class="rom-exceed-zone" id="romExceedZone"></div>
-              <div class="rom-neutral-tick" id="romNeutralTick"></div>
               <div class="rom-marker" id="romMarker"></div>
             </div>
             <p class="rom-caption" id="romCaption">—</p>
-            <p class="rom-note">Typical adult normal ranges from goniometry references. Negative values represent extension past anatomical neutral.</p>
+            <p class="rom-note">Typical adult normal ranges (goniometry references); this simplified single-hinge model can't represent hyperextension past neutral.</p>
           </div>
 
           <div class="bio-section" id="bioSection">
@@ -131,12 +134,10 @@
     </main>
 
     <footer class="footbar">
-      <span>Drag a joint to pose it, drag empty space to orbit the camera &middot; click a joint to isolate it and inspect its angle, range of motion, and biomechanics</span>
+      <span>Drag handles to pose the skeleton &middot; click a joint to isolate it and inspect its angle and biomechanics</span>
     </footer>
   </div>
 
-  <script src="vendor/three.min.js"></script>
-  <script src="vendor/OrbitControls.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
